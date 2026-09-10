@@ -1,0 +1,16 @@
+{
+  "name": "metafyl",
+  "version": "0.1.0",
+  "description": "Shareable, self-contained HTML review artifact for a Claude Code session: prompts linked to the edits they caused.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "story": "bin/story.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
