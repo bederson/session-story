@@ -58,14 +58,55 @@ test('renderReviewLens lists one timeline entry per turn with prompt, summary, f
   const html = renderReviewLens(story);
 
   assert.match(html, /data-turn="1"/);
-  assert.match(html, /Add a title prop/);
-  assert.match(html, /Added title prop\./);
+  // The prompt itself must render as visible text, not only as a title tooltip.
+  assert.match(html, /<blockquote class="turn-prompt">Add a title prop<\/blockquote>/);
+  assert.match(html, /<p class="turn-summary">Added title prop\.<\/p>/);
   assert.match(html, /src\/Panel\.tsx/);
   assert.match(html, /class="[^"]*churn[^"]*"/);
   assert.match(html, /class="hunk"/); // edit panel content rendered via renderEdit
 });
 
-test('renderReviewLens falls back to the prompt itself when a turn has no summary yet', async () => {
+test('renderReviewLens renders each file chip as a button keyed to the file, so it can scroll to that edit', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'Add a title prop', summary: '', edits: [
+        { id: 'e1', tool: 'Edit', file: '/p/src/Panel.tsx', rel: 'src/Panel.tsx', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 1 } },
+        // a second edit to the same file must not produce a second chip
+        { id: 'e2', tool: 'Edit', file: '/p/src/Panel.tsx', rel: 'src/Panel.tsx', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
+        { id: 'e3', tool: 'Edit', file: '/tmp/s.json', rel: '../../tmp/s.json', outside_cwd: true, kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
+      ] },
+    ],
+    files: [{ rel: 'src/Panel.tsx', language: 'typescript', turns: [1], churn: true, stats: { added: 2, removed: 1 } }],
+  });
+
+  const html = renderReviewLens(story);
+
+  const chips = html.match(/<button type="button" class="chip[^"]*" data-file="src\/Panel\.tsx"/g) || [];
+  assert.equal(chips.length, 1);
+  // the chip key must match the key renderEdit puts on the block it scrolls to
+  assert.match(html, /<div class="edit" data-file="src\/Panel\.tsx"/);
+  // churn and scope markers survive the change from span to button
+  assert.match(html, /class="chip churn" data-file="src\/Panel\.tsx"/);
+  assert.match(html, /class="chip" data-file="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
+});
+
+test('renderReviewLens escapes quotes in a file chip key', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [{ index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [
+      { id: 'e1', tool: 'Edit', file: '/p/a', rel: 'a"><img src=x>.ts', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 0, removed: 0 } },
+    ] }],
+    files: [],
+  });
+
+  const html = renderReviewLens(story);
+
+  assert.match(html, /data-file="a&quot;&gt;&lt;img src=x&gt;\.ts"/);
+  assert.doesNotMatch(html, /<img src=x>/);
+});
+
+test('renderReviewLens omits the summary paragraph when a turn has no summary yet, but still shows the prompt', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
     turns: [{ index: 1, id: 'u1', at: null, prompt: 'Investigate the flaky test', summary: '', edits: [] }],
@@ -73,7 +114,8 @@ test('renderReviewLens falls back to the prompt itself when a turn has no summar
 
   const html = renderReviewLens(story);
 
-  assert.match(html, /Investigate the flaky test/);
+  assert.match(html, /<blockquote class="turn-prompt">Investigate the flaky test<\/blockquote>/);
+  assert.doesNotMatch(html, /class="turn-summary"/);
 });
 
 test('renderDiffLens lists a file tree entry and a panel per file, with each hunk tagged by its turn', async () => {
@@ -118,4 +160,165 @@ test('renderStoryLens renders one card per turn with prompt, summary, file count
   assert.match(html, /1 file/);
   assert.match(html, /<details/);
   assert.match(html, /class="hunk"/);
+});
+
+test('renderHeader renders the counts as stat tiles with icons, a decorative motif, and a per-turn session strip', () => {
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', prompt: 'a', summary: 'A.', edits: [{ id: 'e1', tool: 'Edit', file: '/p/a', rel: 'a', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 3, removed: 1 } }] },
+      { index: 2, id: 'u2', prompt: 'b', summary: 'B.', edits: [] },
+    ],
+    totals: { turns: 2, files: 1, added: 3, removed: 1, edits: 1 },
+  });
+
+  const html = renderHeader(story);
+
+  assert.equal((html.match(/class="stat-tile/g) || []).length, 4);
+  assert.match(html, /<span class="stat-value">2<\/span>\s*<span class="stat-label">turns<\/span>/);
+  assert.match(html, /class="stat-value"><span class="v-in">\+3<\/span>/);
+  assert.match(html, /class="header-motif"/);
+  assert.equal((html.match(/class="strip-seg/g) || []).length, 4); // one strip per scope
+  assert.match(html, /class="strip-seg empty"/); // turn 2 made no edits
+  assert.match(html, /title="Turn 1: \+3 −1"/);
+});
+
+test('renderReviewLens gives each timeline item an added/removed activity bar scaled to the busiest turn', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'a', summary: 'A.', edits: [{ id: 'e1', tool: 'Edit', file: '/p/a', rel: 'a', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 4, removed: 0 } }] },
+      { index: 2, id: 'u2', at: null, prompt: 'b', summary: 'B.', edits: [{ id: 'e2', tool: 'Edit', file: '/p/b', rel: 'b', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 1 } }] },
+    ],
+  });
+
+  const html = renderReviewLens(story);
+
+  // turn 1: 4 of max 4 -> 100% add, no del segment; turn 2: 25% add, 25% del
+  assert.match(html, /<span class="bar-add" style="width:100%"><\/span>/);
+  assert.match(html, /<span class="bar-add" style="width:25%"><\/span><span class="bar-del" style="width:25%"><\/span>/);
+  assert.match(html, /<span class="bar-label"><span class="v-in">\+4 −0<\/span><span class="v-all">\+4 −0<\/span><\/span>/);
+});
+
+test('renderStoryLens cards carry the same activity bar as the review timeline', async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [{ index: 1, id: 'u1', prompt: 'a', summary: 'A.', edits: [{ id: 'e1', tool: 'Edit', file: '/p/a', rel: 'a', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 2, removed: 2 } }] }],
+  });
+
+  const html = renderStoryLens(story);
+
+  assert.match(html, /class="turn-bars"/);
+  assert.match(html, /\+2 −2/);
+});
+
+function outsideStory() {
+  const inside = { id: 'e1', tool: 'Edit', file: '/p/a.ts', rel: 'a.ts', kind: 'update', by_subagent: null, result: 'ok', outside_cwd: false, before: 'a\n', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }], stats: { added: 2, removed: 0 } };
+  const outside = { id: 'e2', tool: 'Edit', file: '/tmp/s.json', rel: '../../tmp/s.json', kind: 'update', by_subagent: null, result: 'ok', outside_cwd: true, before: null, hunks: [], stats: { added: 5, removed: 5 } };
+  return sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p1', summary: 'S1.', edits: [inside, outside] },
+      { index: 2, id: 'u2', at: null, prompt: 'p2', summary: 'S2.', edits: [outside] },
+    ],
+    files: [
+      { rel: 'a.ts', language: 'typescript', turns: [1], churn: false, outside_cwd: false, stats: { added: 2, removed: 0 } },
+      { rel: '../../tmp/s.json', language: 'json', turns: [1, 2], churn: true, outside_cwd: true, stats: { added: 10, removed: 10 } },
+    ],
+    totals: { turns: 2, files: 2, added: 7, removed: 5, edits: 3 },
+  });
+}
+
+test('renderHeader carries both in-project and overall counts, two session strips, and a note about what is hidden', () => {
+  const html = renderHeader(outsideStory());
+
+  assert.match(html, /<span class="v-in">1<\/span><span class="v-all">2<\/span>/); // files
+  assert.match(html, /<span class="v-in">\+2<\/span><span class="v-all">\+7<\/span>/); // added
+  assert.match(html, /class="session-strip" data-scope="in"/);
+  assert.match(html, /class="session-strip" data-scope="all"/);
+  assert.match(html, /class="outside-note only-when-filtered"/);
+  assert.match(html, /outside the project/i);
+});
+
+test('renderReviewLens marks out-of-project edits and chips, and explains a turn left empty by the filter', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+
+  const html = renderReviewLens(outsideStory());
+
+  assert.match(html, /<button type="button" class="chip[^"]*" data-file="[^"]*" data-outside="1"/);
+  assert.match(html, /<div class="edit" data-file="[^"]*" data-outside="1">/);
+  assert.match(html, /<div class="edit" data-file="a\.ts">/); // the in-project edit is not marked
+  // turn 2 only touched a file outside the project
+  assert.match(html, /class="no-edits only-when-filtered"/);
+});
+
+test('renderDiffLens marks the out-of-project file in the tree and its panel', async () => {
+  const { renderDiffLens } = await import('../src/render/lenses.mjs');
+
+  const html = renderDiffLens(outsideStory());
+
+  assert.match(html, /<li class="file-tree-item[^"]*" data-file="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
+  assert.match(html, /<section class="file-panel" data-file-panel="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
+});
+
+test('renderReviewLens passes each edit its reconstructed pre-edit text so the full-file view can render', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+
+  const html = renderReviewLens(outsideStory());
+
+  assert.match(html, /<table class="hunk full">/); // in-project edit had a before snapshot
+  assert.match(html, /outside the project/i); // the outside edit gets a skip note, not a splice attempt
+});
+
+test('renderStoryLens keeps its collapsed code as hunks only, so the full-file toggle cannot empty it', async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+
+  const html = renderStoryLens(outsideStory());
+
+  assert.match(html, /class="view view-hunks"/);
+  assert.doesNotMatch(html, /class="view view-full"/);
+});
+
+test('renderReviewLens and renderDiffLens skip splicing the full file for out-of-project edits, to save the page budget for project files', async () => {
+  const { renderReviewLens, renderDiffLens } = await import('../src/render/lenses.mjs');
+  const story = outsideStory();
+
+  const reviewHtml = renderReviewLens(story);
+  const diffHtml = renderDiffLens(story);
+
+  // the outside edit (e2, no `before`) never gets a spliced attempt logged as unavailable;
+  // it gets the dedicated skip note instead.
+  assert.match(reviewHtml, /outside the project/i);
+  assert.match(diffHtml, /outside the project/i);
+});
+
+test('renderHeader shows an outcome pill and the start/end commit range when report data is present', () => {
+  const story = sampleStory({
+    report: {
+      plan: 'p', decisions: [], outcome: 'completed', outcome_note: null,
+      dependencies: { manifests: [], installs: [], config_files: [] },
+      git: {
+        branch: 'main',
+        start_commit: { sha: 'abc1234abc1234abc1234abc1234abc1234abcd', subject: 'Initial commit' },
+        end_commit: { sha: 'def5678def5678def5678def5678def5678defg', subject: 'Add feature' },
+        commits: [],
+        dirty: false,
+        status: { modified: 0, added: 0, deleted: 0, untracked: 0 },
+      },
+    },
+  });
+
+  const html = renderHeader(story);
+
+  assert.match(html, /outcome-pill outcome-completed/);
+  assert.match(html, /Completed/);
+  assert.match(html, /abc1234/);
+  assert.match(html, /def5678/);
+});
+
+test('renderHeader omits the outcome pill and commit range when report is absent', () => {
+  const story = sampleStory();
+  delete story.report;
+
+  const html = renderHeader(story);
+
+  assert.doesNotMatch(html, /outcome-pill/);
 });

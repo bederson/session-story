@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, renderHunk } from '../src/render/diff.mjs';
+import { escapeHtml, renderHunk, renderEdit } from '../src/render/diff.mjs';
 
 test('escapeHtml escapes <, >, &, and quotes', () => {
   assert.equal(escapeHtml('<script>a && b</script> "q" \'s\''), '&lt;script&gt;a &amp;&amp; b&lt;/script&gt; &quot;q&quot; &#39;s&#39;');
@@ -55,4 +55,112 @@ test('renderEdit shows a "no result" note for an edit with an unknown result', a
   const html = renderEdit(edit);
 
   assert.match(html, /result unknown/i);
+});
+
+test('renderEdit shows the error message for an edit that failed', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = { rel: 'src/a.ts', kind: null, by_subagent: null, result: 'error', error: 'File does not exist.', hunks: [], stats: { added: 0, removed: 0 } };
+
+  const html = renderEdit(edit);
+
+  assert.match(html, /Edit failed/i);
+  assert.match(html, /File does not exist\./);
+});
+
+test('renderEdit shows the hunks and, when the pre-edit text is known, the whole file around them', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = {
+    id: 'e1', rel: 'a.txt', kind: 'update', by_subagent: null, result: 'ok',
+    hunks: [{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1, lines: ['-b', '+B'] }],
+    stats: { added: 1, removed: 1 },
+  };
+
+  const html = renderEdit(edit, { base: 'a\nb\nc\n' });
+
+  assert.match(html, /class="view view-hunks"/);
+  assert.match(html, /class="view view-full"/);
+  assert.match(html, /<table class="hunk">/);
+  assert.match(html, /<table class="hunk full">/);
+  // the full view carries the lines the hunk never mentioned
+  assert.match(html, /class="code">a</);
+  assert.match(html, /class="code">c</);
+});
+
+test('renderEdit says so when no pre-edit text could be reconstructed for the full view', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = { id: 'e1', rel: 'a.txt', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 0, removed: 0 } };
+
+  const html = renderEdit(edit, { base: null });
+
+  assert.match(html, /class="view view-full"/);
+  assert.match(html, /full file is not available/i);
+});
+
+test('renderEdit marks an edit whose file lives outside the project', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = { id: 'e1', rel: '../../tmp/s.json', outside_cwd: true, kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } };
+
+  assert.match(renderEdit(edit), /<div class="edit" data-file="\.\.\/\.\.\/tmp\/s\.json" data-outside="1">/);
+});
+
+test('renderEdit tags every edit with its file so review-lens chips can scroll to it', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const base = { id: 'e1', rel: 'src/a.ts', kind: 'update', by_subagent: null, hunks: [], stats: { added: 0, removed: 0 } };
+
+  assert.match(renderEdit({ ...base, result: 'ok' }), /<div class="edit" data-file="src\/a\.ts"/);
+  // an interrupted edit still renders a block, so it needs the key too
+  assert.match(renderEdit({ ...base, result: 'unknown' }), /<div class="edit" data-file="src\/a\.ts"/);
+});
+
+test('renderEdit escapes quotes in the file key attribute', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = { id: 'e1', rel: 'a"><img src=x>.ts', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 0, removed: 0 } };
+
+  const html = renderEdit(edit);
+
+  assert.match(html, /data-file="a&quot;&gt;&lt;img src=x&gt;\.ts"/);
+  assert.doesNotMatch(html, /<img src=x>/);
+});
+
+test('a shell-driven edit is badged and says where its diff came from', () => {
+  const html = renderEdit({
+    tool: 'Bash', rel: 'app.py', kind: 'update', result: 'ok',
+    hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }],
+    stats: { added: 1, removed: 1 }, base_source: 'git', attribution: 'command',
+    command: "sed -i '' s/a/b/ app.py",
+  });
+
+  assert.match(html, /badge shell/);
+  assert.match(html, /via shell/);
+  assert.match(html, /working tree vs HEAD/);
+  assert.match(html, /named this file/);
+  assert.match(html, /sed -i &#39;&#39; s\/a\/b\/ app\.py/);
+});
+
+test('a weakly attributed shell edit does not claim the turn wrote the file', () => {
+  const html = renderEdit({
+    tool: 'Bash', rel: 'app.py', kind: 'update', result: 'ok', hunks: [],
+    stats: { added: 0, removed: 0 }, attribution: 'mention', command: null,
+  });
+
+  assert.match(html, /no command here clearly wrote it/);
+});
+
+test('a binary shell change says so instead of showing an empty diff', () => {
+  const html = renderEdit({
+    tool: 'Bash', rel: 'web/logo.png', kind: 'update', result: 'ok', hunks: [],
+    stats: { added: 0, removed: 0 }, binary: true, attribution: 'command',
+  });
+
+  assert.match(html, /Binary file changed by a shell command/);
+  assert.doesNotMatch(html, /working tree vs HEAD/);
+});
+
+test('a deleted file is badged as deleted', () => {
+  const html = renderEdit({
+    tool: 'Bash', rel: 'old.py', kind: 'delete', result: 'ok', hunks: [],
+    stats: { added: 0, removed: 2 }, attribution: 'command',
+  });
+
+  assert.match(html, /badge delete/);
 });

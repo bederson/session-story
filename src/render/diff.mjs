@@ -3,6 +3,9 @@
  * (old line / new line) table per hunk, one row per line.
  */
 
+import { icon } from './icons.mjs';
+import { renderFullFile } from './full-view.mjs';
+
 const ESCAPE_MAP = {
   '&': '&amp;',
   '<': '&lt;',
@@ -60,26 +63,119 @@ export function renderHunk(hunk) {
 }
 
 /**
- * Render one edit: a file header (name, create/update badge, subagent
- * badge) followed by its hunks, or a note when the result never arrived.
- * @param {{rel: string, kind: string|null, by_subagent: string|null, result: string, hunks: object[], stats: {added:number, removed:number}}} edit
+ * The two ways of showing one edit's changes: just the hunks, or the whole
+ * file with those same changes spliced in. Both are rendered; the page's
+ * "Full file" toggle decides which is visible.
+ * @param {Array<object>} hunks
+ * @param {string|null} base - the file as it stood before this edit
+ * @param {boolean} [approximate] - base came from the file's current disk
+ *   contents rather than the transcript, so it may include later changes
+ * @param {boolean|'skip'} [withFull] - render the full-file view (true),
+ *   omit it entirely (false, used by the Story lens), or show a
+ *   placeholder without attempting to splice one (`'skip'`, used for
+ *   out-of-project edits so the shared page budget goes to project files)
  * @returns {string}
  */
-export function renderEdit(edit) {
-  const badges = [];
-  if (edit.kind === 'create') badges.push('<span class="badge create">new file</span>');
-  if (edit.by_subagent) badges.push(`<span class="badge subagent">by subagent</span>`);
+export function renderViews(hunks, base, approximate = false, withFull = true) {
+  const hunksHtml = (hunks || []).map(renderHunk).join('');
+  if (withFull === false) return `<div class="view view-hunks">${hunksHtml}</div>`;
+  if (withFull === 'skip') {
+    return (
+      `<div class="view view-hunks">${hunksHtml}</div>` +
+      `<div class="view view-full"><p class="edit-unknown">${icon('filter')}` +
+      `Full file view is not shown for files outside the project.</p></div>`
+    );
+  }
+  const fullHtml = renderFullFile(typeof base === 'string' ? base : null, hunks || []);
+  const full = fullHtml ||
+    `<p class="edit-unknown">${icon('warning')}The full file is not available for this edit ` +
+    `(the transcript did not record its contents).</p>`;
 
+  const note = fullHtml && approximate
+    ? `<p class="approx-note">${icon('warning')}Reconstructed from the file's current contents; ` +
+      `lines changed after the session may appear.</p>`
+    : '';
+
+  return (
+    `<div class="view view-hunks">${hunksHtml}</div>` +
+    `<div class="view view-full">${note}${full}</div>`
+  );
+}
+
+/**
+ * Render one edit: a file header (name, create/update badge, subagent
+ * badge, line counts) followed by its changes, or a note when the result
+ * never arrived. Edits to files outside the project are marked so the
+ * page's scope filter can hide them.
+ * @param {object} edit
+ * @param {{base?: string|null, fullView?: boolean|'skip'}} [opts] - reconstructed
+ *   pre-edit file text, and whether to include the full-file view
+ * @returns {string}
+ */
+/**
+ * Say where a shell-driven edit came from. These are reconstructed from git
+ * rather than read out of the transcript, and the link to this particular
+ * prompt is an inference from the commands it ran - both worth stating on
+ * the page rather than only in the story's blind spots.
+ */
+function provenanceNote(edit) {
+  if (edit.tool !== 'Bash') return '';
+  if (edit.binary) {
+    return `<p class="approx-note">${icon('warning')}Binary file changed by a shell command; ` +
+      `no diff is shown.</p>`;
+  }
+  const how = edit.attribution === 'command'
+    ? 'a shell command in this turn named this file'
+    : edit.attribution === 'bulk'
+      ? 'this turn ran a tool that rewrites files it does not name (a formatter or installer)'
+      : 'this turn only referred to this file; no command here clearly wrote it';
+  return `<p class="approx-note">${icon('terminal')}Changed by a shell command, so the diff comes ` +
+    `from git (working tree vs HEAD) rather than the transcript - ${how}.</p>`;
+}
+
+export function renderEdit(edit, opts = {}) {
+  const badges = [];
+  if (edit.kind === 'create') badges.push(`<span class="badge create">${icon('sparkle')}new file</span>`);
+  if (edit.kind === 'delete') badges.push(`<span class="badge delete">${icon('minus')}deleted</span>`);
+  if (edit.tool === 'Bash') {
+    // The command is the evidence for this edit, so keep it on the badge.
+    const title = edit.command ? ` title="${escapeHtml(edit.command)}"` : '';
+    badges.push(`<span class="badge shell"${title}>${icon('terminal')}via shell</span>`);
+  }
+  if (edit.by_subagent) badges.push(`<span class="badge subagent">${icon('robot')}by subagent</span>`);
+
+  const stats = edit.stats || { added: 0, removed: 0 };
+  const outside = edit.outside_cwd ? ' data-outside="1"' : '';
+  // The file key lets a review-lens file chip find this block and scroll to it.
+  const fileAttr = ` data-file="${escapeHtml(edit.rel)}"`;
   const header =
     `<div class="edit-header">` +
+    `${icon('code')}` +
     `<span class="edit-file">${escapeHtml(edit.rel)}</span>` +
     badges.join('') +
+    `<span class="edit-stats"><span class="add">+${stats.added}</span><span class="del">\u2212${stats.removed}</span></span>` +
     `</div>`;
 
   if (edit.result === 'unknown') {
-    return `${header}<p class="edit-unknown">Edit attempted, result unknown (session may have been interrupted).</p>`;
+    return (
+      `<div class="edit"${fileAttr}${outside}>${header}` +
+      `<p class="edit-unknown">${icon('warning')}Edit attempted, result unknown (session may have been interrupted).</p>` +
+      `</div>`
+    );
   }
 
-  const hunksHtml = edit.hunks.map(renderHunk).join('');
-  return `${header}${hunksHtml}`;
+  if (edit.result === 'error') {
+    return (
+      `<div class="edit"${fileAttr}${outside}>${header}` +
+      `<p class="edit-unknown">${icon('warning')}Edit failed: ${escapeHtml(edit.error || 'unknown error')}</p>` +
+      `</div>`
+    );
+  }
+
+  return (
+    `<div class="edit"${fileAttr}${outside}>${header}` +
+    provenanceNote(edit) +
+    renderViews(edit.hunks, opts.base, edit.base_source === 'disk', 'fullView' in opts ? opts.fullView : true) +
+    `</div>`
+  );
 }

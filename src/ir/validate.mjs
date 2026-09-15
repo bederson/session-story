@@ -7,6 +7,7 @@
 
 const REQUIRED_EDIT_FIELDS = ['id', 'tool', 'file', 'rel', 'hunks', 'stats'];
 const REQUIRED_TURN_FIELDS = ['index', 'id', 'prompt', 'edits'];
+const OUTCOME_VALUES = ['completed', 'partial', 'failed', 'blocked'];
 
 function pushIfMissing(errors, obj, field, prefix) {
   if (obj[field] === undefined) {
@@ -49,6 +50,19 @@ export function validateStory(story, { strict = false } = {}) {
 
   if (strict && story.session && !story.session.summary) {
     errors.push('session.summary is required in strict mode but is empty');
+  }
+
+  if (strict) {
+    const report = story.report;
+    if (!report || !report.plan) {
+      errors.push('report.plan is required in strict mode but is empty');
+    }
+    if (!report || !OUTCOME_VALUES.includes(report.outcome)) {
+      errors.push(`report.outcome is required in strict mode and must be one of: ${OUTCOME_VALUES.join(', ')}`);
+    }
+    if (!report || !Array.isArray(report.decisions)) {
+      errors.push('report.decisions is required in strict mode and must be an array');
+    }
   }
 
   return { valid: errors.length === 0, errors };

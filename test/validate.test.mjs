@@ -49,8 +49,45 @@ test('strict mode requires the session summary and every turn summary to be non-
   assert.ok(result.errors.some((e) => /turns\[0\]\.summary/.test(e)));
 });
 
-test('strict mode passes once every summary is filled in', () => {
+test('non-strict mode tolerates a story with no report field at all', () => {
   const story = minimalStory();
+  assert.equal(story.report, undefined);
+
+  const result = validateStory(story);
+
+  assert.equal(result.valid, true);
+});
+
+test('strict mode requires report.plan, report.outcome, and report.decisions', () => {
+  const story = minimalStory();
+  story.session.summary = 'Refactored the Panel component.';
+  story.turns[0].summary = 'Added a title prop.';
+
+  const result = validateStory(story, { strict: true });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => /report\.plan/.test(e)));
+  assert.ok(result.errors.some((e) => /report\.outcome/.test(e)));
+  assert.ok(result.errors.some((e) => /report\.decisions/.test(e)));
+});
+
+test('strict mode rejects an outcome outside the known set', () => {
+  const story = minimalStory({
+    report: { plan: 'Fix the bug.', decisions: [], outcome: 'done', outcome_note: null },
+  });
+  story.session.summary = 's';
+  story.turns[0].summary = 't';
+
+  const result = validateStory(story, { strict: true });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => /report\.outcome/.test(e)));
+});
+
+test('strict mode passes once every summary and every report field is filled in', () => {
+  const story = minimalStory({
+    report: { plan: 'Add a title prop to Panel.', decisions: ['Kept the existing prop pattern.'], outcome: 'completed', outcome_note: null },
+  });
   story.session.summary = 'Refactored the Panel component.';
   story.turns[0].summary = 'Added a title prop.';
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { slugify, locateSession } from '../src/transcript/locate.mjs';
+import { slugify, locateSession, locateChain } from '../src/transcript/locate.mjs';
 
 test('slugify turns an absolute cwd into the ~/.claude/projects folder slug', () => {
   assert.equal(slugify('/Users/nalaj/Development/AI/metafyl'), '-Users-nalaj-Development-AI-metafyl');
@@ -92,4 +92,95 @@ test('locateSubagents returns an empty map when the session has no subagents fol
   const result = await locateSubagents({ claudeDir, cwd, sessionId: 'sess-1' });
 
   assert.deepEqual(result, {});
+});
+
+/**
+ * A session transcript that opens with a /clear, exactly as Claude Code
+ * records one: a meta caveat record, then the slash-command record, then
+ * the first real prompt.
+ */
+function clearedTranscript(at, prompt) {
+  return [
+    JSON.stringify({ type: 'mode', mode: 'normal' }),
+    JSON.stringify({ type: 'user', isMeta: true, timestamp: at, message: { role: 'user', content: '<local-command-caveat>Caveat</local-command-caveat>' } }),
+    JSON.stringify({ type: 'user', timestamp: at, message: { role: 'user', content: '<command-name>/clear</command-name>\n<command-message>clear</command-message>' } }),
+    JSON.stringify({ type: 'user', timestamp: at, message: { role: 'user', content: prompt } }),
+    '',
+  ].join('\n');
+}
+
+async function chainFixture() {
+  const claudeDir = await makeClaudeDir();
+  const cwd = '/proj';
+  const slugDir = path.join(claudeDir, slugify(cwd));
+  await mkdir(slugDir, { recursive: true });
+  return { claudeDir, cwd, slugDir };
+}
+
+test('locateChain follows a /clear back to the session it cleared, oldest first', async () => {
+  const { claudeDir, cwd, slugDir } = await chainFixture();
+  const clearedAt = new Date('2026-09-14T11:56:45.000Z');
+  await writeFile(path.join(slugDir, 'older.jsonl'), '{"type":"user","message":{"role":"user","content":"first"}}\n');
+  await writeFile(path.join(slugDir, 'newer.jsonl'), clearedTranscript(clearedAt.toISOString(), 'second'));
+  // Claude Code flushes a final record into the old transcript as it clears,
+  // so the predecessor's mtime lands on the /clear timestamp.
+  await utimes(path.join(slugDir, 'older.jsonl'), clearedAt, clearedAt);
+
+  const chain = await locateChain({ claudeDir, cwd, sessionId: 'newer' });
+
+  assert.deepEqual(chain.map((c) => c.sessionId), ['older', 'newer']);
+  assert.equal(chain[1].transcriptPath, path.join(slugDir, 'newer.jsonl'));
+});
+
+test('locateChain follows more than one /clear back through the day', async () => {
+  const { claudeDir, cwd, slugDir } = await chainFixture();
+  const firstClear = new Date('2026-09-14T09:00:00.000Z');
+  const secondClear = new Date('2026-09-14T11:00:00.000Z');
+  await writeFile(path.join(slugDir, 'a.jsonl'), '{"type":"user","message":{"role":"user","content":"first"}}\n');
+  await writeFile(path.join(slugDir, 'b.jsonl'), clearedTranscript(firstClear.toISOString(), 'second'));
+  await writeFile(path.join(slugDir, 'c.jsonl'), clearedTranscript(secondClear.toISOString(), 'third'));
+  await utimes(path.join(slugDir, 'a.jsonl'), firstClear, firstClear);
+  await utimes(path.join(slugDir, 'b.jsonl'), secondClear, secondClear);
+
+  const chain = await locateChain({ claudeDir, cwd, sessionId: 'c' });
+
+  assert.deepEqual(chain.map((c) => c.sessionId), ['a', 'b', 'c']);
+});
+
+test('locateChain returns the session alone when it did not start with a /clear', async () => {
+  const { claudeDir, cwd, slugDir } = await chainFixture();
+  const at = new Date('2026-09-14T11:56:45.000Z');
+  await writeFile(path.join(slugDir, 'older.jsonl'), '{"type":"user","message":{"role":"user","content":"first"}}\n');
+  await writeFile(path.join(slugDir, 'newer.jsonl'), '{"type":"user","timestamp":"2026-09-14T11:56:45.000Z","message":{"role":"user","content":"second"}}\n');
+  await utimes(path.join(slugDir, 'older.jsonl'), at, at);
+
+  const chain = await locateChain({ claudeDir, cwd, sessionId: 'newer' });
+
+  assert.deepEqual(chain.map((c) => c.sessionId), ['newer']);
+});
+
+test('locateChain stops when no transcript matches the /clear moment', async () => {
+  const { claudeDir, cwd, slugDir } = await chainFixture();
+  const clearedAt = new Date('2026-09-14T11:56:45.000Z');
+  const unrelated = new Date('2026-09-14T08:00:00.000Z');
+  await writeFile(path.join(slugDir, 'older.jsonl'), '{"type":"user","message":{"role":"user","content":"first"}}\n');
+  await writeFile(path.join(slugDir, 'newer.jsonl'), clearedTranscript(clearedAt.toISOString(), 'second'));
+  await utimes(path.join(slugDir, 'older.jsonl'), unrelated, unrelated);
+
+  const chain = await locateChain({ claudeDir, cwd, sessionId: 'newer' });
+
+  assert.deepEqual(chain.map((c) => c.sessionId), ['newer']);
+});
+
+test('locateChain does not loop when two transcripts point at each other', async () => {
+  const { claudeDir, cwd, slugDir } = await chainFixture();
+  const at = new Date('2026-09-14T11:56:45.000Z');
+  await writeFile(path.join(slugDir, 'a.jsonl'), clearedTranscript(at.toISOString(), 'one'));
+  await writeFile(path.join(slugDir, 'b.jsonl'), clearedTranscript(at.toISOString(), 'two'));
+  await utimes(path.join(slugDir, 'a.jsonl'), at, at);
+  await utimes(path.join(slugDir, 'b.jsonl'), at, at);
+
+  const chain = await locateChain({ claudeDir, cwd, sessionId: 'b' });
+
+  assert.deepEqual(chain.map((c) => c.sessionId), ['a', 'b']);
 });

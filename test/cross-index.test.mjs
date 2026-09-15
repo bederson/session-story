@@ -46,3 +46,16 @@ test('guesses a language from the file extension', () => {
   assert.equal(files.find((f) => f.rel === 'README.md').language, 'markdown');
   assert.equal(files.find((f) => f.rel === 'Makefile').language, null);
 });
+
+test('carries the out-of-project flag onto the file entry', async () => {
+  const { crossIndexFiles } = await import('../src/ir/cross-index.mjs');
+  const files = crossIndexFiles([
+    { index: 1, edits: [
+      { rel: 'src/a.ts', outside_cwd: false, stats: { added: 1, removed: 0 } },
+      { rel: '../../tmp/s.json', outside_cwd: true, stats: { added: 2, removed: 0 } },
+    ] },
+  ]);
+
+  assert.equal(files.find((f) => f.rel === 'src/a.ts').outside_cwd, false);
+  assert.equal(files.find((f) => f.rel === '../../tmp/s.json').outside_cwd, true);
+});

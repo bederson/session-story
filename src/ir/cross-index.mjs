@@ -43,11 +43,13 @@ export function crossIndexFiles(turns) {
         byFile.set(edit.rel, {
           rel: edit.rel,
           language: guessLanguage(edit.rel),
+          outside_cwd: !!edit.outside_cwd,
           turns: [],
           stats: { added: 0, removed: 0 },
         });
       }
       const entry = byFile.get(edit.rel);
+      entry.outside_cwd = entry.outside_cwd || !!edit.outside_cwd;
       if (!entry.turns.includes(turn.index)) entry.turns.push(turn.index);
       entry.stats.added += edit.stats.added;
       entry.stats.removed += edit.stats.removed;

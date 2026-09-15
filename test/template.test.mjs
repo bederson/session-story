@@ -24,8 +24,17 @@ test('renderPage produces a full HTML document with a title and all three lens s
   assert.match(html, /id="lens-review"/);
   assert.match(html, /id="lens-diff"/);
   assert.match(html, /id="lens-story"/);
+  assert.match(html, /id="lens-report"/);
   assert.match(html, /<script>/);
   assert.match(html, /<style>/);
+});
+
+test('renderPage adds a Report tab alongside Review/Diff/Story, and degrades gracefully with no report field', () => {
+  const html = renderPage(sampleStory());
+
+  assert.match(html, /data-lens="report"/);
+  assert.match(html, /id="tab-report"/);
+  assert.match(html, /None recorded\./);
 });
 
 test('renderPage escapes a title containing HTML-significant characters', () => {
@@ -36,4 +45,75 @@ test('renderPage escapes a title containing HTML-significant characters', () => 
 
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /&lt;img src=x/);
+});
+
+test('renderPage ships an accessible theme toggle, a no-flash theme bootstrap, and tab semantics on the lens nav', () => {
+  const html = renderPage(sampleStory());
+
+  // bootstrap runs in <head>, before the stylesheet, guarded against a throwing localStorage
+  const head = html.slice(0, html.indexOf('</head>'));
+  assert.match(head, /<script>[^]*try[^]*localStorage\.getItem\('session-story-theme'\)[^]*<\/script>[^]*<style>/);
+  assert.match(html, /<button class="theme-toggle" type="button" aria-label="Theme: system"/);
+  assert.match(html, /<button class="lens-tab" role="tab" data-lens="review"/);
+  assert.match(html, /role="tablist"/);
+  assert.match(html, /prefers-reduced-motion/);
+});
+
+test('renderPage adds the scope and full-file toggles, restored from storage before first paint', () => {
+  const html = renderPage(sampleStory());
+
+  assert.match(html, /class="opt-toggle" type="button" data-opt="scope" aria-pressed="true"/);
+  assert.match(html, /class="opt-toggle" type="button" data-opt="view" aria-pressed="false"/);
+  const head = html.slice(0, html.indexOf('</head>'));
+  assert.match(head, /session-story-scope/);
+  assert.match(head, /session-story-view/);
+  assert.match(html, /html:not\(\.show-outside\) \[data-outside="1"\]/);
+  // the full-file view applies to the code-reading lenses; the narrative
+  // lens always shows just the changes
+  assert.match(html, /html\.full-context #lens-review \.view-full/);
+  assert.match(html, /#lens-story/);
+});
+
+test('renderPage wires file chips to scroll to the matching edit, clear of the sticky lens nav', () => {
+  const html = renderPage(sampleStory());
+
+  // CSS: the scroll target clears the sticky nav and flashes on arrival
+  assert.match(html, /\.edit \{ scroll-margin-top: \d+px; \}/);
+  assert.match(html, /\.edit\.flash \{ animation: flash /);
+  assert.match(html, /@keyframes flash /);
+  assert.match(html, /\.chip \{[^}]*cursor: pointer/);
+  // JS: chips select their turn, then scroll to the edit with the same file key
+  assert.match(html, /\.turn-chips \.chip/);
+  assert.match(html, /turns\.select\(item\.dataset\.turn\)/);
+  assert.match(html, /edit\.dataset\.file === chip\.dataset\.file/);
+  assert.match(html, /scrollIntoView/);
+});
+
+test('renderPage stays self-contained by default: no sidecar script, no library chrome', () => {
+  const html = renderPage(sampleStory());
+
+  // No sidecar to load, no chrome to show: the page is complete on its own.
+  assert.doesNotMatch(html, /<script src=/);
+  assert.doesNotMatch(html, /class="lib-nav"/);
+  assert.doesNotMatch(html, /SESSION_STORY_LIBRARY/);
+});
+
+test('renderPage with a library adds the sidecar script, a back link and a session switcher', () => {
+  const html = renderPage(sampleStory(), {
+    library: { indexHref: 'index.html', manifestHref: 'sessions.js' },
+  });
+
+  assert.match(html, /<script src="sessions\.js"><\/script>/);
+  assert.match(html, /class="lib-nav" hidden/);
+  assert.match(html, /href="index\.html"/);
+  assert.match(html, /class="lib-switch"/);
+  assert.match(html, /SESSION_STORY_LIBRARY/);
+});
+
+test('renderPage library chrome tells the page which session it is', () => {
+  const html = renderPage(sampleStory(), {
+    library: { indexHref: 'index.html', manifestHref: 'sessions.js' },
+  });
+
+  assert.match(html, /data-session-id="s1"/);
 });

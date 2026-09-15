@@ -4,76 +4,439 @@
   "title": "Story IR",
   "description": "Documents the shape of story.json for humans and external tooling. src/ir/validate.mjs implements the same checks by hand (this project has zero npm runtime dependencies, so no JSON Schema engine is used at runtime).",
   "type": "object",
-  "required": ["schema_version", "session", "turns", "files", "totals"],
+  "required": [
+    "schema_version",
+    "session",
+    "turns",
+    "files",
+    "totals"
+  ],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
     "generator": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "version": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     },
     "session": {
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "cwd": { "type": "string" },
-        "git_branch": { "type": ["string", "null"] },
-        "title": { "type": ["string", "null"] },
-        "started_at": { "type": ["string", "null"], "format": "date-time" },
-        "ended_at": { "type": ["string", "null"], "format": "date-time" },
-        "duration_ms": { "type": "integer", "minimum": 0 },
-        "summary": { "type": "string", "description": "Filled in by Claude; required non-empty in strict validation." },
-        "blind_spots": { "type": "array", "items": { "type": "string" } }
+        "id": {
+          "type": "string"
+        },
+        "chain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Session ids joined into this story, oldest first, this session last. Longer than one when sessions were split by /clear."
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "git_branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "ended_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "type": "string",
+          "description": "Filled in by Claude; required non-empty in strict validation."
+        },
+        "blind_spots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "turns": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["index", "id", "prompt", "edits"],
+        "required": [
+          "index",
+          "id",
+          "prompt",
+          "edits"
+        ],
         "properties": {
-          "index": { "type": "integer", "minimum": 1 },
-          "id": { "type": "string" },
-          "at": { "type": ["string", "null"], "format": "date-time" },
-          "prompt": { "type": "string" },
-          "summary": { "type": "string", "description": "Filled in by Claude; required non-empty in strict validation." },
+          "index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Filled in by Claude; required non-empty in strict validation."
+          },
+          "bash": {
+            "type": "array",
+            "description": "Shell commands run during this turn. They carry no diff of their own; they are what links a git-detected change back to this prompt, and are also the source for the Report lens's commands/tests/installs sections.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "command"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "command": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The one-line description the tool call carried, if any."
+                },
+                "at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "test",
+                    "lint",
+                    "build",
+                    "install",
+                    "git",
+                    "other"
+                  ]
+                },
+                "ok": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "null until a result arrives or the command was rejected."
+                },
+                "exit_code": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "rejected": {
+                  "type": "boolean"
+                },
+                "interrupted": {
+                  "type": "boolean"
+                },
+                "output_tail": {
+                  "type": "string",
+                  "description": "The last part of the command's combined stdout/stderr (or its error text), capped in length."
+                },
+                "by_subagent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "errors": {
+            "type": "array",
+            "description": "Every failed or user-rejected tool call in this turn, from any tool, main session or subagent.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "tool",
+                "kind",
+                "message"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "rejected"
+                  ]
+                },
+                "target": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The command or file the tool call was acting on."
+                },
+                "message": {
+                  "type": "string"
+                },
+                "resolution": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Filled in by Claude for errors that mattered to the outcome."
+                }
+              }
+            }
+          },
+          "plan": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The plan Claude proposed via ExitPlanMode in this turn, if any.",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "approved": {
+                "type": "boolean"
+              },
+              "file": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
           "edits": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "tool", "file", "rel", "hunks", "stats"],
+              "required": [
+                "id",
+                "tool",
+                "file",
+                "rel",
+                "hunks",
+                "stats"
+              ],
               "properties": {
-                "id": { "type": "string" },
-                "tool": { "enum": ["Edit", "Write", "NotebookEdit"] },
-                "file": { "type": "string" },
-                "rel": { "type": "string" },
-                "kind": { "type": ["string", "null"], "enum": ["create", "update", null] },
-                "by_subagent": { "type": ["string", "null"] },
-                "result": { "enum": ["ok", "unknown"] },
+                "id": {
+                  "type": "string"
+                },
+                "tool": {
+                  "enum": [
+                    "Edit",
+                    "Write",
+                    "NotebookEdit",
+                    "Bash"
+                  ]
+                },
+                "file": {
+                  "type": "string"
+                },
+                "rel": {
+                  "type": "string"
+                },
+                "outside_cwd": {
+                  "type": "boolean",
+                  "description": "The file lives outside the session's project directory (scratch/temp); hidden by the page's \"Project files only\" filter."
+                },
+                "kind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    null
+                  ]
+                },
+                "by_subagent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "result": {
+                  "enum": [
+                    "ok",
+                    "unknown",
+                    "error"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The tool's error message, when result is \"error\"."
+                },
                 "hunks": {
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["oldStart", "oldLines", "newStart", "newLines", "lines"],
+                    "required": [
+                      "oldStart",
+                      "oldLines",
+                      "newStart",
+                      "newLines",
+                      "lines"
+                    ],
                     "properties": {
-                      "oldStart": { "type": "integer" },
-                      "oldLines": { "type": "integer" },
-                      "newStart": { "type": "integer" },
-                      "newLines": { "type": "integer" },
-                      "lines": { "type": "array", "items": { "type": "string" } }
+                      "oldStart": {
+                        "type": "integer"
+                      },
+                      "oldLines": {
+                        "type": "integer"
+                      },
+                      "newStart": {
+                        "type": "integer"
+                      },
+                      "newLines": {
+                        "type": "integer"
+                      },
+                      "lines": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 },
                 "stats": {
                   "type": "object",
-                  "required": ["added", "removed"],
+                  "required": [
+                    "added",
+                    "removed"
+                  ],
                   "properties": {
-                    "added": { "type": "integer", "minimum": 0 },
-                    "removed": { "type": "integer", "minimum": 0 }
+                    "added": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "removed": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
                   }
+                },
+                "before": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Full file text before this edit, when the transcript recorded it. Feeds the page's full-file view."
+                },
+                "after": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Full file text after this edit, when the transcript recorded it (Write results)."
+                },
+                "old_string": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The replaced text, used to chain file states across edits that carry no snapshot."
+                },
+                "new_string": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The replacement text."
+                },
+                "replace_all": {
+                  "type": "boolean"
+                },
+                "base_source": {
+                  "type": "string",
+                  "enum": [
+                    "disk",
+                    "git"
+                  ],
+                  "description": "Where the full-file base came from when the transcript carried none: the file's current disk contents, or git. Both are approximate, and the page labels them so."
+                },
+                "attribution": {
+                  "type": "string",
+                  "enum": [
+                    "command",
+                    "bulk",
+                    "mention"
+                  ],
+                  "description": "For Bash-derived edits, how firmly the change is linked to this turn: a command here named the file, this turn ran a whole-tree tool, or the file was only mentioned."
+                },
+                "command": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "For Bash-derived edits, the shell command credited with the change."
+                },
+                "binary": {
+                  "type": "boolean",
+                  "description": "The file is binary; it changed, but no diff is shown."
                 }
               }
             }
@@ -85,18 +448,50 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["rel", "turns", "churn", "stats"],
+        "required": [
+          "rel",
+          "turns",
+          "churn",
+          "stats"
+        ],
         "properties": {
-          "rel": { "type": "string" },
-          "language": { "type": ["string", "null"] },
-          "turns": { "type": "array", "items": { "type": "integer" } },
-          "churn": { "type": "boolean", "description": "true when more than one turn touched this file" },
+          "rel": {
+            "type": "string"
+          },
+          "outside_cwd": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "churn": {
+            "type": "boolean",
+            "description": "true when more than one turn touched this file"
+          },
           "stats": {
             "type": "object",
-            "required": ["added", "removed"],
+            "required": [
+              "added",
+              "removed"
+            ],
             "properties": {
-              "added": { "type": "integer", "minimum": 0 },
-              "removed": { "type": "integer", "minimum": 0 }
+              "added": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "removed": {
+                "type": "integer",
+                "minimum": 0
+              }
             }
           }
         }
@@ -104,13 +499,232 @@
     },
     "totals": {
       "type": "object",
-      "required": ["turns", "files", "added", "removed", "edits"],
+      "required": [
+        "turns",
+        "files",
+        "added",
+        "removed",
+        "edits"
+      ],
       "properties": {
-        "turns": { "type": "integer", "minimum": 0 },
-        "files": { "type": "integer", "minimum": 0 },
-        "added": { "type": "integer", "minimum": 0 },
-        "removed": { "type": "integer", "minimum": 0 },
-        "edits": { "type": "integer", "minimum": 0 }
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edits": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "description": "The session-level story: what Claude set out to do, what it decided, what it installed or configured, and what git shows. Rendered as the page's Report lens.",
+      "properties": {
+        "plan": {
+          "type": "string",
+          "description": "Filled in by Claude: what the session set out to do. Required non-empty in strict validation."
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Filled in by Claude: notable technical decisions made during the session."
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "completed",
+            "partial",
+            "failed",
+            "blocked",
+            null
+          ],
+          "description": "Filled in by Claude. Required in strict validation."
+        },
+        "outcome_note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Filled in by Claude: an optional one-line elaboration, e.g. what a blocked session is blocked on."
+        },
+        "dependencies": {
+          "type": "object",
+          "properties": {
+            "manifests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "rel": {
+                    "type": "string"
+                  },
+                  "turns": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "added": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "removed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "installs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "turn": {
+                    "type": "integer"
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "ok": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "config_files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "rel": {
+                    "type": "string"
+                  },
+                  "turns": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "git": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "null when --no-git was passed or the project isn't a git repo.",
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "start_commit": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "sha": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "end_commit": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "sha": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "commits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sha": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "turn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "dirty": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "object",
+              "properties": {
+                "modified": {
+                  "type": "integer"
+                },
+                "added": {
+                  "type": "integer"
+                },
+                "deleted": {
+                  "type": "integer"
+                },
+                "untracked": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

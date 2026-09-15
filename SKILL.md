@@ -29,41 +29,91 @@ session" / "/story".
    ```
    Use `--session <id>` for a specific session or omit it (defaults to
    `--latest`) for the current one. Pass `--cwd <dir>` if the project
-   differs from the current working directory. The `--brief` flag also
-   prints a projection of `session` and `turns[].{prompt, edits[].rel,
-   edits[].kind, edits[].stats}` to stdout — **read only this projection,
-   never the full story.json's hunks.**
+   differs from the current working directory. Sessions split by `/clear`
+   are joined into one story automatically (`--no-chain` opts out), so the
+   brief may carry turns from before the clear — `session.chain` lists the
+   session ids included, oldest first. The `--brief` flag also
+   prints a projection to stdout — **read only this projection, never the
+   full story.json's hunks.** It carries, per turn: `prompt`,
+   `edits[].{rel, kind, stats}`, `commands[].{command, category, ok,
+   exit_code}`, `errors[].{tool, target, message}`, and `plan.{approved,
+   excerpt}` when a plan was proposed; and at the top level,
+   `report.git` (branch and commit range, already extracted) and
+   `report.dependencies` (manifest/install/config changes, already
+   extracted), plus `hints` — a rough `outcome` guess from the last
+   test/lint/build command and `failed_validations` excerpts to help you
+   write resolutions.
 
-2. **Summarize.** Using the brief projection from step 1, write:
-   - `session.summary`: one paragraph describing the session as a whole.
+2. **Summarize and write the report.** Using the brief projection from
+   step 1, write directly into `<scratch>/story.json` with the Edit tool
+   (touch nothing else in the file):
+   - `session.summary`: 2-5 sentences on what was actually done in the
+     session — the final summary shown at the top of the page and in the
+     Report lens. State the outcome plainly, don't just restate the intent.
    - `turns[N].summary`: one sentence of intent per turn, in the same
      order as the brief output.
-
-   Edit these two fields directly into `<scratch>/story.json` with the
-   Edit tool. Do not touch anything else in the file.
+   - `report.plan`: 2-4 sentences on what the session set out to do.
+     Use any `turns[N].plan.excerpt` as source material when present.
+   - `report.decisions`: notable technical decisions worth calling out
+     (e.g. "used the existing service instead of a new endpoint"). Empty
+     array if none stand out.
+   - `report.outcome`: one of `completed`, `partial`, `failed`, `blocked`
+     — your judgement call, informed by `hints.outcome` and whether any
+     `errors[]` or failed commands were left unresolved.
+   - `report.outcome_note`: optional one-liner, most useful when the
+     outcome isn't `completed` (what it's blocked on, what's left).
+   - `errors[N].resolution` (nested under each turn): fill in only for
+     errors that mattered to the outcome — how it was fixed, or why it
+     was left as-is. Leave `null` for noise (e.g. a `grep` that found
+     nothing).
 
 3. **Validate.**
    ```bash
    node bin/story.mjs validate <scratch>/story.json --strict
    ```
-   If this reports missing summaries, go back to step 2 and fill them in.
+   If this reports missing summaries or report fields, go back to step 2.
 
 4. **Render.**
    ```bash
-   node bin/story.mjs render <scratch>/story.json -o session-story.html --open
+   node bin/story.mjs render <scratch>/story.json --open
    ```
    This writes a self-contained HTML file (no server, no dependencies)
-   with three switchable views — Review (timeline + diff, for you), Diff
+   with four switchable views — Review (timeline + diff, for you), Diff
    (file tree, GitHub-style, for a teammate), Story (narrative cards, for
-   a stakeholder) — and opens it.
+   a stakeholder), Report (plan, commands, tests, errors, decisions,
+   dependencies, git state, and outcome) — and opens it.
 
-5. Report the output path and the header numbers (turns, files, lines
-   added/removed) to the user.
+   The page lands in the project's `.session-stories/` library as
+   `<date>-<session-id>-<slug>.html`, so each session keeps its own file
+   instead of overwriting the last one, and a regenerated
+   `.session-stories/index.html` lists every session with a filter. Each
+   page also gets a session switcher in its nav. Re-rendering the same
+   session overwrites its file and refreshes its index entry. Pass
+   `--library <dir>` for another folder, or `-o <file>` / `--no-library`
+   for a single standalone page with no library around it.
+
+5. Report both paths — the story page and `.session-stories/index.html` —
+   and the header numbers (turns, files, lines added/removed, outcome) to
+   the user.
 
 ## Limits
 
 - Claude Code sessions only (v1). Codex/Cursor/OpenCode are out of scope.
-- Only `Edit`, `Write`, and `NotebookEdit` tool calls are tracked. Changes
-  made through `Bash` (e.g. `sed`, a script) are invisible to this tool —
-  the generated page says so in its header.
+- `Edit`, `Write`, and `NotebookEdit` calls are read from the transcript.
+  Changes made through `Bash` (`sed -i`, a heredoc script, a formatter)
+  carry no diff there, so they are recovered from git instead: the tree is
+  compared from the commit the session started on through to the working
+  tree, and each change is credited to the turn whose commands account for
+  it. Those edits are labelled on the page, and come with git's limits — a
+  file edited again after the session shows both changes, and a commit made
+  during the session by someone else looks like the session's own. Pass
+  `--no-git` to `extract` to skip the git pass entirely (this also skips
+  `report.git`; `report.dependencies` is still extracted).
+- `report.plan`, `report.decisions`, `report.outcome`, `report.outcome_note`,
+  and `errors[].resolution` are Claude's judgement calls, not something the
+  extractor can verify — write them honestly from what the brief shows,
+  including when the outcome isn't a clean success.
+- A story page copied out of `.session-stories/` loses only the "All
+  sessions" link and the switcher (they stay hidden when the sibling
+  `sessions.js` is missing); everything else still works from `file://`.
 - Requires Node.js 18.18+ and no other dependencies.

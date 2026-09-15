@@ -6,16 +6,51 @@
 
 import path from 'node:path';
 import { crossIndexFiles } from '../ir/cross-index.mjs';
+import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
 
-const NOISE_PATTERN = /^<(local-command-caveat|command-name|local-command-stdout|local-command-stderr)>/;
+// Wrapper tags the harness injects into user-role records. None of this text
+// was typed by the human, so it is stripped before a record is considered a
+// prompt. A record made up entirely of these blocks is not a turn at all.
+const SYNTHETIC_TAGS = [
+  'local-command-caveat',
+  'command-message',
+  'command-name',
+  'command-args',
+  'local-command-stdout',
+  'local-command-stderr',
+  'system-reminder',
+  'task-notification',
+  'user-prompt-submit-hook',
+];
+const TAG_ALTERNATION = SYNTHETIC_TAGS.join('|');
+// Balanced <tag>...</tag> spans, non-greedy, newlines included.
+const SYNTHETIC_BLOCK = new RegExp(`<(${TAG_ALTERNATION})>[\\s\\S]*?</\\1>`, 'g');
+// An unbalanced opening tag (truncated injection): drop it and everything after.
+const SYNTHETIC_TAIL = new RegExp(`<(${TAG_ALTERNATION})>[\\s\\S]*$`);
+
 const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
 const AGENT_TOOL = 'Agent';
+// Bash results carry no diff, so a shell-driven change cannot be read out
+// of the transcript. The commands are kept per turn anyway: git can supply
+// the diff later, and the commands say which turn to credit it to
+// (src/ir/git-edits.mjs).
+const BASH_TOOL = 'Bash';
+const PLAN_TOOL = 'ExitPlanMode';
+
+/** Remove harness-injected wrapper blocks, leaving only human-authored text. */
+function stripSyntheticBlocks(text) {
+  return text.replace(SYNTHETIC_BLOCK, '').replace(SYNTHETIC_TAIL, '').trim();
+}
 
 function isRealUserPrompt(record) {
   if (record.type !== 'user') return false;
+  // Record-level flags the harness sets on non-human turns.
+  if (record.isMeta || record.isCompactSummary || record.isSidechain) return false;
+  if (record.isVisibleInTranscript === false) return false;
+  if (record.toolUseResult !== undefined) return false;
   const content = record.message && record.message.content;
   if (typeof content !== 'string') return false;
-  return !NOISE_PATTERN.test(content.trim());
+  return stripSyntheticBlocks(content) !== '';
 }
 
 function toolUseCalls(record) {
@@ -25,11 +60,109 @@ function toolUseCalls(record) {
   return content.filter((block) => block.type === 'tool_use' && FILE_EDIT_TOOLS.has(block.name));
 }
 
+/**
+ * A Bash tool_use turned into a turn's bash entry, before its result
+ * arrives. `category` is knowable from the command text alone; the rest
+ * (`ok`, `exit_code`, `output_tail`, ...) is filled in by `finishBash` once
+ * the tool_result shows up (see `pendingBash` in `buildStory`).
+ */
+function bashCalls(record) {
+  if (record.type !== 'assistant') return [];
+  const content = record.message && record.message.content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((block) => block.type === 'tool_use' && block.name === BASH_TOOL)
+    .map((block) => {
+      const command = (block.input && block.input.command) || '';
+      return {
+        id: block.id,
+        command,
+        description: (block.input && block.input.description) || '',
+        at: record.timestamp || null,
+        category: classifyCommand(command),
+        ok: null,
+        exit_code: null,
+        rejected: false,
+        interrupted: false,
+        output_tail: '',
+      };
+    });
+}
+
+/** Every tool_use block in a record, regardless of which tool it names. */
+function allToolUseCalls(record) {
+  if (record.type !== 'assistant') return [];
+  const content = record.message && record.message.content;
+  if (!Array.isArray(content)) return [];
+  return content.filter((block) => block.type === 'tool_use');
+}
+
 function agentToolUseCalls(record) {
   if (record.type !== 'assistant') return [];
   const content = record.message && record.message.content;
   if (!Array.isArray(content)) return [];
   return content.filter((block) => block.type === 'tool_use' && block.name === AGENT_TOOL);
+}
+
+/** The last `limit` characters of a result's text, or '' when there is none. */
+function tail(text, limit = 1500) {
+  if (typeof text !== 'string') return '';
+  return text.length > limit ? text.slice(-limit) : text;
+}
+
+/**
+ * Fill in a bash entry (created by `bashCalls`) once its tool_result has
+ * arrived: whether it succeeded, its exit code (when the transcript prints
+ * one), and a tail of its combined output for the page to show on failure.
+ */
+function finishBash(entry, isError, toolUseResult, block) {
+  entry.ok = !isError;
+  entry.rejected = isRejection(toolUseResult);
+  if (toolUseResult && typeof toolUseResult === 'object') {
+    const text = `${toolUseResult.stdout || ''}${toolUseResult.stderr || ''}`;
+    entry.output_tail = tail(text);
+    entry.exit_code = parseExitCode(text);
+    entry.interrupted = !!toolUseResult.interrupted;
+  } else if (typeof toolUseResult === 'string') {
+    entry.output_tail = tail(toolUseResult);
+    entry.exit_code = parseExitCode(toolUseResult);
+  } else {
+    const text = typeof (block && block.content) === 'string' ? block.content : '';
+    entry.output_tail = tail(text);
+    entry.exit_code = parseExitCode(text);
+  }
+}
+
+/** Strip the harness's `<tool_use_error>` wrapper and cap the length. */
+function errorMessage(block, toolUseResult) {
+  let raw;
+  if (typeof toolUseResult === 'string') raw = toolUseResult;
+  else if (block && typeof block.content === 'string') raw = block.content;
+  else raw = JSON.stringify((block && block.content) || '');
+  raw = raw.replace(/<\/?tool_use_error>/g, '').trim();
+  return raw.length > 400 ? raw.slice(0, 400) : raw;
+}
+
+/** What an errored tool call was acting on, for the turn's error list. */
+function errorTarget(name, input, cwd) {
+  if (!input) return null;
+  if (FILE_EDIT_TOOLS.has(name)) return relativePath(input.file_path, cwd);
+  if (name === BASH_TOOL) return input.command || null;
+  return input.file_path || input.command || input.pattern || input.query || null;
+}
+
+/** Record an errored or rejected tool result onto its turn's error list. */
+function pushError(turnRef, { id, tool, at, toolUseResult, block, target }) {
+  if (!turnRef) return;
+  turnRef.errors.push({
+    id,
+    tool,
+    at,
+    kind: isRejection(toolUseResult) ? 'rejected' : 'error',
+    target: target || null,
+    message: errorMessage(block, toolUseResult),
+    resolution: null,
+  });
 }
 
 /**
@@ -39,42 +172,76 @@ function agentToolUseCalls(record) {
  */
 function extractSubagentEdits(subRecords, cwd, agentId) {
   const edits = [];
+  const bash = [];
+  const errors = [];
   const pending = new Map();
+  const pendingBash = new Map();
+  const pendingAny = new Map();
+  // A container with an `errors` array so pushError can treat it exactly
+  // like a turn; the entries end up on the spawning turn's own list.
+  const errorSink = { errors };
 
   for (const record of subRecords) {
+    for (const block of allToolUseCalls(record)) {
+      pendingAny.set(block.id, { name: block.name, input: block.input });
+    }
+
+    const shell = bashCalls(record);
+    for (const entry of shell) {
+      entry.by_subagent = agentId;
+      bash.push(entry);
+      pendingBash.set(entry.id, entry);
+    }
+
     const calls = toolUseCalls(record);
     for (const call of calls) {
-      const edit = {
-        id: call.id,
-        tool: call.name,
-        file: call.input.file_path,
-        rel: relativePath(call.input.file_path, cwd),
-        kind: null,
-        by_subagent: agentId,
-        result: 'unknown',
-        hunks: [],
-        stats: { added: 0, removed: 0 },
-      };
+      const edit = newEdit(call, cwd, agentId);
       edits.push(edit);
       pending.set(call.id, edit);
     }
 
     const toolResult = toolResultFor(record);
-    if (toolResult && pending.has(toolResult.toolUseId)) {
+    if (!toolResult) continue;
+
+    const info = pendingAny.get(toolResult.toolUseId);
+    if (toolResult.isError && info) {
+      pushError(errorSink, {
+        id: toolResult.toolUseId,
+        tool: info.name,
+        at: record.timestamp || null,
+        toolUseResult: toolResult.result,
+        block: toolResult.block,
+        target: errorTarget(info.name, info.input, cwd),
+      });
+    }
+    pendingAny.delete(toolResult.toolUseId);
+
+    if (pendingBash.has(toolResult.toolUseId)) {
+      finishBash(pendingBash.get(toolResult.toolUseId), toolResult.isError, toolResult.result, toolResult.block);
+      pendingBash.delete(toolResult.toolUseId);
+    }
+
+    if (pending.has(toolResult.toolUseId)) {
       const edit = pending.get(toolResult.toolUseId);
-      const r = toolResult.result || {};
-      edit.kind = r.type || null;
-      const hunks = r.type === 'create'
-        ? synthesizeCreateHunk(r.content || '')
-        : (r.structuredPatch || []);
-      edit.result = 'ok';
-      edit.hunks = hunks;
-      edit.stats = hunkStats(hunks);
+      if (toolResult.isError) {
+        edit.result = 'error';
+        edit.error = errorMessage(toolResult.block, toolResult.result);
+      } else {
+        const r = toolResult.result || {};
+        edit.kind = r.type || null;
+        captureFileContent(edit, r);
+        const hunks = r.type === 'create'
+          ? synthesizeCreateHunk(r.content || '')
+          : (r.structuredPatch || []);
+        edit.result = 'ok';
+        edit.hunks = hunks;
+        edit.stats = hunkStats(hunks);
+      }
       pending.delete(toolResult.toolUseId);
     }
   }
 
-  return edits;
+  return { edits, bash, errors };
 }
 
 function toolResultFor(record) {
@@ -83,7 +250,12 @@ function toolResultFor(record) {
   if (!Array.isArray(content)) return null;
   const resultBlock = content.find((block) => block.type === 'tool_result');
   if (!resultBlock) return null;
-  return { toolUseId: resultBlock.tool_use_id, result: record.toolUseResult };
+  return {
+    toolUseId: resultBlock.tool_use_id,
+    result: record.toolUseResult,
+    block: resultBlock,
+    isError: !!resultBlock.is_error,
+  };
 }
 
 function synthesizeCreateHunk(content) {
@@ -115,25 +287,96 @@ function relativePath(filePath, cwd) {
   return path.relative(cwd, filePath) || filePath;
 }
 
+/**
+ * True when the edited file lives outside the session's project directory
+ * (a scratchpad or temp file, whose relative path climbs out of the repo).
+ */
+function isOutsideCwd(rel) {
+  if (!rel) return false;
+  return rel.startsWith('..') || path.isAbsolute(rel);
+}
+
+/** The edit record as it stands before its tool result arrives. */
+function newEdit(call, cwd, agentId) {
+  const rel = relativePath(call.input.file_path, cwd);
+  const edit = {
+    id: call.id,
+    tool: call.name,
+    file: call.input.file_path,
+    rel,
+    outside_cwd: isOutsideCwd(rel),
+    kind: null,
+    result: 'unknown',
+    error: null,
+    hunks: [],
+    stats: { added: 0, removed: 0 },
+    before: null,
+    after: null,
+    old_string: null,
+    new_string: null,
+    replace_all: false,
+  };
+  if (agentId) edit.by_subagent = agentId;
+  return edit;
+}
+
+/**
+ * Record whatever full file content and replacement strings the tool result
+ * carried, so the renderer can rebuild the whole file around the hunks.
+ */
+function captureFileContent(edit, result) {
+  if (typeof result.originalFile === 'string') edit.before = result.originalFile;
+  if (typeof result.content === 'string') edit.after = result.content;
+  if (result.type === 'create' && edit.before === null) edit.before = '';
+  if (typeof result.oldString === 'string') {
+    edit.old_string = result.oldString;
+    edit.new_string = typeof result.newString === 'string' ? result.newString : '';
+    edit.replace_all = !!result.replaceAll;
+  }
+}
+
 export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const turns = [];
-  // toolUseId -> { edit, turn } for edits whose result hasn't arrived yet
+  // toolUseId -> edit, for edits whose result hasn't arrived yet
   const pending = new Map();
   const pendingAgents = new Map(); // agent tool_use id -> spawning turn
+  const pendingBash = new Map(); // bash tool_use id -> its bash entry
+  const pendingPlan = new Map(); // ExitPlanMode tool_use id -> { turnRef, text, file }
+  // Every tool_use id -> { name, input }, so an is_error result of any kind
+  // (not just edits and bash) can be recorded on the turn it happened in.
+  const pendingAny = new Map();
   let currentTurn = null;
+  let gitBranch = null;
 
   for (const record of records) {
+    if (gitBranch === null && typeof record.gitBranch === 'string' && record.gitBranch) {
+      gitBranch = record.gitBranch;
+    }
+
     if (isRealUserPrompt(record)) {
       currentTurn = {
         index: turns.length + 1,
         id: record.uuid,
         at: record.timestamp,
-        prompt: record.message.content,
+        prompt: stripSyntheticBlocks(record.message.content),
         summary: '',
         edits: [],
+        bash: [],
+        errors: [],
+        plan: null,
       };
       turns.push(currentTurn);
       continue;
+    }
+
+    for (const block of allToolUseCalls(record)) {
+      if (currentTurn) pendingAny.set(block.id, { name: block.name, input: block.input, turnRef: currentTurn });
+    }
+
+    const shell = bashCalls(record);
+    if (shell.length > 0 && currentTurn) {
+      currentTurn.bash.push(...shell);
+      for (const entry of shell) pendingBash.set(entry.id, entry);
     }
 
     const agentCalls = agentToolUseCalls(record);
@@ -143,19 +386,24 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       }
     }
 
+    if (currentTurn) {
+      const content = record.message && record.message.content;
+      const planCalls = Array.isArray(content)
+        ? content.filter((block) => block.type === 'tool_use' && block.name === PLAN_TOOL)
+        : [];
+      for (const call of planCalls) {
+        pendingPlan.set(call.id, {
+          turnRef: currentTurn,
+          text: (call.input && call.input.plan) || '',
+          file: (call.input && call.input.planFilePath) || null,
+        });
+      }
+    }
+
     const calls = toolUseCalls(record);
     if (calls.length > 0 && currentTurn) {
       for (const call of calls) {
-        const edit = {
-          id: call.id,
-          tool: call.name,
-          file: call.input.file_path,
-          rel: relativePath(call.input.file_path, cwd),
-          kind: null,
-          result: 'unknown',
-          hunks: [],
-          stats: { added: 0, removed: 0 },
-        };
+        const edit = newEdit(call, cwd, null);
         currentTurn.edits.push(edit);
         pending.set(call.id, edit);
       }
@@ -163,39 +411,128 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     }
 
     const toolResult = toolResultFor(record);
-    if (toolResult && pendingAgents.has(toolResult.toolUseId)) {
+    if (!toolResult) continue;
+
+    const info = pendingAny.get(toolResult.toolUseId);
+    if (toolResult.isError && info) {
+      pushError(info.turnRef, {
+        id: toolResult.toolUseId,
+        tool: info.name,
+        at: record.timestamp || null,
+        toolUseResult: toolResult.result,
+        block: toolResult.block,
+        target: errorTarget(info.name, info.input, cwd),
+      });
+    }
+    pendingAny.delete(toolResult.toolUseId);
+
+    if (pendingPlan.has(toolResult.toolUseId)) {
+      const p = pendingPlan.get(toolResult.toolUseId);
+      p.turnRef.plan = { text: p.text, approved: !toolResult.isError, file: p.file };
+      pendingPlan.delete(toolResult.toolUseId);
+    }
+
+    if (pendingAgents.has(toolResult.toolUseId)) {
       const spawningTurn = pendingAgents.get(toolResult.toolUseId);
       const r = toolResult.result || {};
       const agentId = r.agentId;
       const subRecords = (subagents && subagents[agentId]) || [];
-      const subEdits = extractSubagentEdits(subRecords, cwd, agentId);
-      spawningTurn.edits.push(...subEdits);
+      const sub = extractSubagentEdits(subRecords, cwd, agentId);
+      spawningTurn.edits.push(...sub.edits);
+      spawningTurn.bash.push(...sub.bash);
+      spawningTurn.errors.push(...sub.errors);
       pendingAgents.delete(toolResult.toolUseId);
     }
 
-    if (toolResult && pending.has(toolResult.toolUseId)) {
+    if (pendingBash.has(toolResult.toolUseId)) {
+      finishBash(pendingBash.get(toolResult.toolUseId), toolResult.isError, toolResult.result, toolResult.block);
+      pendingBash.delete(toolResult.toolUseId);
+    }
+
+    if (pending.has(toolResult.toolUseId)) {
       const edit = pending.get(toolResult.toolUseId);
-      const r = toolResult.result || {};
-      edit.kind = r.type || null;
-      const hunks = r.type === 'create'
-        ? synthesizeCreateHunk(r.content || '')
-        : (r.structuredPatch || []);
-      edit.result = 'ok';
-      edit.hunks = hunks;
-      edit.stats = hunkStats(hunks);
+      if (toolResult.isError) {
+        edit.result = 'error';
+        edit.error = errorMessage(toolResult.block, toolResult.result);
+      } else {
+        const r = toolResult.result || {};
+        edit.kind = r.type || null;
+        captureFileContent(edit, r);
+        const hunks = r.type === 'create'
+          ? synthesizeCreateHunk(r.content || '')
+          : (r.structuredPatch || []);
+        edit.result = 'ok';
+        edit.hunks = hunks;
+        edit.stats = hunkStats(hunks);
+      }
       pending.delete(toolResult.toolUseId);
     }
   }
 
   const startedAt = turns.length > 0 ? turns[0].at : null;
-  const endedAt = turns.length > 0 ? turns[turns.length - 1].at : null;
+  // The session runs until its last record, not its last prompt: a turn that
+  // ends in twenty minutes of tool calls is twenty minutes long.
+  const endedAt = latestTimestamp(records, startedAt)
+    || (turns.length > 0 ? turns[turns.length - 1].at : null);
   const durationMs = startedAt && endedAt
     ? new Date(endedAt).getTime() - new Date(startedAt).getTime()
     : 0;
 
+  return {
+    schema_version: 1,
+    session: {
+      id: sessionId,
+      cwd,
+      git_branch: gitBranch,
+      started_at: startedAt,
+      ended_at: endedAt,
+      duration_ms: durationMs,
+    },
+    turns,
+    files: crossIndexFiles(turns),
+    totals: countTotals(turns),
+    report: {
+      plan: '',
+      decisions: [],
+      outcome: null,
+      outcome_note: null,
+      dependencies: { manifests: [], installs: [], config_files: [] },
+      git: null,
+    },
+  };
+}
+
+/** The latest parseable `timestamp` across all records, at or after `floor`. */
+function latestTimestamp(records, floor) {
+  const floorMs = floor ? new Date(floor).getTime() : -Infinity;
+  let bestMs = -Infinity;
+  let best = null;
+  for (const record of records) {
+    if (typeof record.timestamp !== 'string') continue;
+    const ms = new Date(record.timestamp).getTime();
+    if (!Number.isFinite(ms) || ms < floorMs || ms <= bestMs) continue;
+    bestMs = ms;
+    best = record.timestamp;
+  }
+  return best;
+}
+
+/**
+ * Recompute the per-story counts and file cross-index. Passes that add
+ * edits after the fact (src/ir/git-edits.mjs) call this so the summary
+ * numbers keep matching the turns.
+ * @param {object} story - mutated in place
+ */
+export function refreshDerived(story) {
+  story.files = crossIndexFiles(story.turns);
+  story.totals = countTotals(story.turns);
+  return story;
+}
+
+function countTotals(turns) {
   const allEdits = turns.flatMap((t) => t.edits);
   const files = new Set(allEdits.map((e) => e.rel));
-  const totals = allEdits.reduce(
+  return allEdits.reduce(
     (acc, e) => ({
       turns: turns.length,
       files: files.size,
@@ -205,18 +542,4 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     }),
     { turns: turns.length, files: files.size, added: 0, removed: 0, edits: 0 }
   );
-
-  return {
-    schema_version: 1,
-    session: {
-      id: sessionId,
-      cwd,
-      started_at: startedAt,
-      ended_at: endedAt,
-      duration_ms: durationMs,
-    },
-    turns,
-    files: crossIndexFiles(turns),
-    totals,
-  };
 }
