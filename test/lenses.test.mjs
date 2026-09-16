@@ -322,3 +322,45 @@ test('renderHeader omits the outcome pill and commit range when report is absent
 
   assert.doesNotMatch(html, /outcome-pill/);
 });
+
+test('the fallback title uses only the first line of the prompt, clamped to 60 chars', () => {
+  const story = sampleStory();
+  story.session.title = null;
+  story.turns[0].prompt = 'Extend session story so that includes also:\nTo add:\nPlan / intent';
+
+  const html = renderHeader(story);
+
+  assert.match(html, /<h1>Extend session story so that includes also:<\/h1>/);
+  assert.doesNotMatch(html, /To add:/);
+});
+
+test('a long single-line fallback title is truncated to 60 characters plus an ellipsis', () => {
+  const story = sampleStory();
+  story.session.title = null;
+  story.turns[0].prompt = 'a'.repeat(120);
+
+  const html = renderHeader(story);
+
+  const [, heading] = html.match(/<h1>([^<]*)<\/h1>/);
+  assert.equal(heading, `${'a'.repeat(60)}…`);
+});
+
+test('the header prefers the harness ai_title over the first prompt when Claude wrote no title', () => {
+  const story = sampleStory();
+  story.session.title = null;
+  story.session.ai_title = 'Panel title prop';
+  story.turns[0].prompt = 'Add a title prop to Panel and then also write up a README for it';
+
+  const html = renderHeader(story);
+
+  assert.match(html, /<h1>Panel title prop<\/h1>/);
+});
+
+test('a Claude-written title still wins over ai_title', () => {
+  const story = sampleStory();
+  story.session.ai_title = 'Harness guess';
+
+  const html = renderHeader(story);
+
+  assert.match(html, /<h1>Panel title\/subtitle<\/h1>/);
+});

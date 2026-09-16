@@ -471,3 +471,27 @@ test('subagent Bash errors and edit errors bubble up to the spawning turn', () =
   assert.equal(story.turns[0].bash[0].by_subagent, 'sub-1');
   assert.equal(story.turns[0].bash[0].ok, false);
 });
+
+test('carries the harness-generated session title as session.ai_title, keeping the last one written', () => {
+  const records = [
+    { type: 'ai-title', aiTitle: 'First guess at the session', sessionId: 's1' },
+    { type: 'user', uuid: 'u1', timestamp: '2026-09-10T10:00:00.000Z', message: { role: 'user', content: 'Add a title prop to Panel' } },
+    { type: 'ai-title', aiTitle: 'Panel title prop', sessionId: 's1' },
+  ];
+
+  const story = buildStory(records, { sessionId: 's1' });
+
+  assert.equal(story.session.ai_title, 'Panel title prop');
+  // Claude still writes session.title itself; the harness title is only a fallback.
+  assert.equal(story.session.title, null);
+});
+
+test('leaves session.ai_title null when the transcript has no ai-title record', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-09-10T10:00:00.000Z', message: { role: 'user', content: 'Add a title prop to Panel' } },
+  ];
+
+  const story = buildStory(records, { sessionId: 's1' });
+
+  assert.equal(story.session.ai_title, null);
+});

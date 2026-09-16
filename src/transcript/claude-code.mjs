@@ -347,10 +347,19 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const pendingAny = new Map();
   let currentTurn = null;
   let gitBranch = null;
+  // The harness writes an `ai-title` record whenever it (re)names the session;
+  // the last one is the current name, and the header falls back to it when
+  // Claude has not written a title of its own.
+  let aiTitle = null;
 
   for (const record of records) {
     if (gitBranch === null && typeof record.gitBranch === 'string' && record.gitBranch) {
       gitBranch = record.gitBranch;
+    }
+
+    if (record.type === 'ai-title' && typeof record.aiTitle === 'string' && record.aiTitle.trim()) {
+      aiTitle = record.aiTitle.trim();
+      continue;
     }
 
     if (isRealUserPrompt(record)) {
@@ -484,6 +493,8 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       id: sessionId,
       cwd,
       git_branch: gitBranch,
+      title: null,
+      ai_title: aiTitle,
       started_at: startedAt,
       ended_at: endedAt,
       duration_ms: durationMs,
@@ -530,7 +541,10 @@ export function refreshDerived(story) {
 }
 
 function countTotals(turns) {
-  const allEdits = turns.flatMap((t) => t.edits);
+  // A `combined_into` edit is one turn's share of a diff another turn
+  // already carries (src/ir/git-edits.mjs). It is shown on both turns and
+  // counted on neither twice.
+  const allEdits = turns.flatMap((t) => t.edits).filter((e) => !e.combined_into);
   const files = new Set(allEdits.map((e) => e.rel));
   return allEdits.reduce(
     (acc, e) => ({

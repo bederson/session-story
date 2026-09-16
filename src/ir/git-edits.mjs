@@ -21,8 +21,15 @@
  *     someone other than the session is indistinguishable from its own.
  *     Every edit from here is marked `base_source: 'git'` and the page
  *     labels it approximate.
- *   - when several turns touched one file, git only has the net change; it
- *     is credited to the last turn that wrote it.
+ *   - when several turns touched one file, git only has the net change, so
+ *     there is one diff to show and more than one turn that earned it. Every
+ *     turn that wrote the file carries it, and all but the last are marked
+ *     `combined_into: <turn>` so the page can say the diff is the combined
+ *     work of those turns rather than that turn's alone. Reporting nothing
+ *     for the earlier ones read as "this prompt changed no files", which is
+ *     false; reporting an empty diff read the same way. Their stats are not
+ *     counted again in the session totals (src/transcript/claude-code.mjs)
+ *     or the file index (src/ir/cross-index.mjs).
  *   - `attribution` records how firm the link to the turn is: 'command'
  *     (that turn's command names the file), 'bulk' (that turn ran a
  *     formatter or installer that rewrites files it never names), or
@@ -187,6 +194,9 @@ const CLAIM_TIERS = [
   ['mention', 'suffix'],
 ];
 
+// The tiers that count as writing the file, as opposed to only naming it.
+const WRITE_TIERS = CLAIM_TIERS.filter(([tier]) => tier !== 'mention');
+
 /**
  * Which turn gets credit for each changed path, best evidence first. A file
  * several turns wrote goes to the last of them, since git only has the net
@@ -206,19 +216,28 @@ function attribute(turns, rels, cwd) {
     return claim;
   });
 
+  // Does turn `i` claim `rel` at this tier?
+  const claims = (i, rel, [tier, mode]) => {
+    const claim = claimsByTurn[i];
+    if (tier === 'bulk') return claim.bulk;
+    return mode === 'exact' ? claim[tier].has(rel) : suffixCovers(claim[tier], rel);
+  };
+  const wrote = (i, rel) => WRITE_TIERS.some((t) => claims(i, rel, t));
+
   const owners = new Map();
   for (const rel of rels) {
     for (const [tier, mode] of CLAIM_TIERS) {
       // Later turns win: the last write is what git's net diff reflects.
       for (let i = turns.length - 1; i >= 0; i--) {
-        const claim = claimsByTurn[i];
-        const hit = tier === 'bulk'
-          ? claim.bulk
-          : mode === 'exact' ? claim[tier].has(rel) : suffixCovers(claim[tier], rel);
-        if (hit) {
-          owners.set(rel, { turn: turns[i], attribution: tier });
-          break;
-        }
+        if (!claims(i, rel, [tier, mode])) continue;
+        owners.set(rel, {
+          turn: turns[i],
+          attribution: tier,
+          // Earlier turns that also wrote this file. A mere mention is not a
+          // write, so it never makes one.
+          contributors: tier === 'mention' ? [] : turns.filter((t, j) => j < i && wrote(j, rel)),
+        });
+        break;
       }
       if (owners.has(rel)) break;
     }
@@ -292,6 +311,13 @@ export function fillBashEditsFromGit(story, deps = {}) {
     const edit = buildEdit({ rel, kind, cwd, git, readText, claim, base });
     claim.turn.edits.push(edit);
     added++;
+
+    // Earlier turns wrote this file too, and git cannot separate their work
+    // from the net change. They get the same diff, labelled as shared.
+    for (const turn of claim.contributors || []) {
+      turn.edits.push(combinedEdit(edit, { turn, into: claim.turn.index, cwd, rel }));
+      added++;
+    }
   }
 
   return added;
@@ -354,6 +380,27 @@ function buildEdit({ rel, kind, cwd, git, readText, claim, base = 'HEAD' }) {
 
   edit.stats = hunkStats(edit.hunks);
   return edit;
+}
+
+/**
+ * A turn that wrote a file whose diff git can only produce once, for the
+ * whole session. It shows the same hunks as the owning turn's edit - a turn
+ * that rewrote a component should show the code, not an empty panel - with
+ * `combined_into` naming the turn the diff is shared with so the page can
+ * say so and the totals can skip it.
+ *
+ * The full-file text is left off: the diff is the shared part, and three
+ * copies of a file's before/after in the IR buy nothing the hunks don't.
+ */
+function combinedEdit(owner, { turn, into, cwd, rel }) {
+  return {
+    ...owner,
+    id: `bash:${rel}:t${turn.index}`,
+    before: null,
+    after: null,
+    combined_into: into,
+    command: lastWritingCommand(turn, rel, cwd),
+  };
 }
 
 /** The command text to show alongside the edit: the last one that wrote it. */

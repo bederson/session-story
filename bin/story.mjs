@@ -64,6 +64,7 @@ function briefProjection(story) {
       id: story.session.id,
       cwd: story.session.cwd,
       chain: story.session.chain,
+      ai_title: story.session.ai_title,
       summary: story.session.summary,
     },
     report: {
@@ -74,7 +75,9 @@ function briefProjection(story) {
     turns: story.turns.map((t) => ({
       index: t.index,
       prompt: t.prompt,
-      edits: t.edits.map((e) => ({ rel: e.rel, kind: e.kind, stats: e.stats })),
+      edits: t.edits.map((e) => (e.combined_into
+        ? { rel: e.rel, kind: e.kind, stats: e.stats, combined_into: e.combined_into }
+        : { rel: e.rel, kind: e.kind, stats: e.stats })),
       commands: (t.bash || []).map((b) => ({ command: b.command, category: b.category, ok: b.ok, exit_code: b.exit_code })),
       errors: (t.errors || []).map((e) => ({ tool: e.tool, target: e.target, message: e.message })),
       plan: t.plan ? { approved: t.plan.approved, excerpt: t.plan.text.slice(0, 1500) } : null,

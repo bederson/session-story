@@ -164,3 +164,21 @@ test('a deleted file is badged as deleted', () => {
 
   assert.match(html, /badge delete/);
 });
+
+test('renderEdit shows a shell diff shared with another turn, and says it is shared', async () => {
+  const { renderEdit } = await import('../src/render/diff.mjs');
+  const edit = {
+    rel: 'web/src/Composer.tsx', kind: 'update', tool: 'Bash', result: 'ok',
+    hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }],
+    stats: { added: 1, removed: 1 }, attribution: 'command', combined_into: 4,
+    command: "python3 - <<'EOF'\nopen(p,'w').write(s)\nEOF",
+  };
+
+  const html = renderEdit(edit);
+
+  assert.match(html, /Composer\.tsx/);
+  // The code is on the page, not a pointer to somewhere else.
+  assert.match(html, /class="hunk"/);
+  assert.match(html, /so did turn 4/);
+  assert.doesNotMatch(html, /outside the project/);
+});

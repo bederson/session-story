@@ -51,6 +51,10 @@ export function crossIndexFiles(turns) {
       const entry = byFile.get(edit.rel);
       entry.outside_cwd = entry.outside_cwd || !!edit.outside_cwd;
       if (!entry.turns.includes(turn.index)) entry.turns.push(turn.index);
+      // A `combined_into` edit shares another turn's diff (see
+      // src/ir/git-edits.mjs): it is churn on this file, but its lines were
+      // already counted on the turn that owns them.
+      if (edit.combined_into) continue;
       entry.stats.added += edit.stats.added;
       entry.stats.removed += edit.stats.removed;
     }

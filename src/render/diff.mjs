@@ -76,14 +76,21 @@ export function renderHunk(hunk) {
  *   out-of-project edits so the shared page budget goes to project files)
  * @returns {string}
  */
+const SKIP_REASONS = {
+  skip: 'Full file view is not shown for files outside the project.',
+  combined: 'Full file view is shown on the turn this diff is counted under.',
+};
+
 export function renderViews(hunks, base, approximate = false, withFull = true) {
   const hunksHtml = (hunks || []).map(renderHunk).join('');
   if (withFull === false) return `<div class="view view-hunks">${hunksHtml}</div>`;
-  if (withFull === 'skip') {
+  // Two reasons not to build a full-file view while still keeping the pane,
+  // so the hunks/full toggle behaves the same on every edit.
+  const skipped = SKIP_REASONS[withFull];
+  if (skipped) {
     return (
       `<div class="view view-hunks">${hunksHtml}</div>` +
-      `<div class="view view-full"><p class="edit-unknown">${icon('filter')}` +
-      `Full file view is not shown for files outside the project.</p></div>`
+      `<div class="view view-full"><p class="edit-unknown">${icon('filter')}${skipped}</p></div>`
     );
   }
   const fullHtml = renderFullFile(typeof base === 'string' ? base : null, hunks || []);
@@ -124,6 +131,15 @@ function provenanceNote(edit) {
     return `<p class="approx-note">${icon('warning')}Binary file changed by a shell command; ` +
       `no diff is shown.</p>`;
   }
+  // Several turns wrote this file through the shell. Git has one net change
+  // for all of them, so the same diff appears on each - say so, or the page
+  // reads as though this turn alone made every line of it.
+  if (edit.combined_into) {
+    return `<p class="approx-note">${icon('terminal')}A shell command in this turn changed this ` +
+      `file, and so did turn ${edit.combined_into}. Git keeps only the net change across the ` +
+      `session, so the diff below is their combined work, shown on both turns and counted once ` +
+      `(in turn ${edit.combined_into}'s totals).</p>`;
+  }
   const how = edit.attribution === 'command'
     ? 'a shell command in this turn named this file'
     : edit.attribution === 'bulk'
@@ -131,6 +147,17 @@ function provenanceNote(edit) {
       : 'this turn only referred to this file; no command here clearly wrote it';
   return `<p class="approx-note">${icon('terminal')}Changed by a shell command, so the diff comes ` +
     `from git (working tree vs HEAD) rather than the transcript - ${how}.</p>`;
+}
+
+/**
+ * Whether to build a full-file view for this edit. A shared diff has no
+ * before/after of its own, so it gets the pane with a reason rather than a
+ * file - but only where the caller wanted the pane at all.
+ */
+function fullViewMode(edit, opts) {
+  const wanted = 'fullView' in opts ? opts.fullView : true;
+  if (wanted === false) return false;
+  return edit.combined_into ? 'combined' : wanted;
 }
 
 export function renderEdit(edit, opts = {}) {
@@ -175,7 +202,7 @@ export function renderEdit(edit, opts = {}) {
   return (
     `<div class="edit"${fileAttr}${outside}>${header}` +
     provenanceNote(edit) +
-    renderViews(edit.hunks, opts.base, edit.base_source === 'disk', 'fullView' in opts ? opts.fullView : true) +
+    renderViews(edit.hunks, opts.base, edit.base_source === 'disk', fullViewMode(edit, opts)) +
     `</div>`
   );
 }

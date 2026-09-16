@@ -56,7 +56,16 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "maxLength": 60,
+          "description": "Short plain-language name for the session, written by Claude; the page heading. Required non-empty in strict validation."
+        },
+        "ai_title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The harness's own `ai-title` for the session, taken from the transcript; used as the heading only when session.title is empty."
         },
         "started_at": {
           "type": [
@@ -78,7 +87,8 @@
         },
         "summary": {
           "type": "string",
-          "description": "Filled in by Claude; required non-empty in strict validation."
+          "maxLength": 240,
+          "description": "One or two sentences on the outcome, written by Claude; shown under the heading. Required non-empty in strict validation."
         },
         "blind_spots": {
           "type": "array",
@@ -417,6 +427,10 @@
                     "git"
                   ],
                   "description": "Where the full-file base came from when the transcript carried none: the file's current disk contents, or git. Both are approximate, and the page labels them so."
+                },
+                "combined_into": {
+                  "type": "integer",
+                  "description": "This turn changed the file through the shell, but git only has the session's net change for it, shown on this later turn's edit. The record carries no hunks and no stats."
                 },
                 "attribution": {
                   "type": "string",

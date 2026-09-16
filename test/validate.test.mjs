@@ -88,6 +88,7 @@ test('strict mode passes once every summary and every report field is filled in'
   const story = minimalStory({
     report: { plan: 'Add a title prop to Panel.', decisions: ['Kept the existing prop pattern.'], outcome: 'completed', outcome_note: null },
   });
+  story.session.title = 'Panel title prop';
   story.session.summary = 'Refactored the Panel component.';
   story.turns[0].summary = 'Added a title prop.';
 
@@ -95,4 +96,32 @@ test('strict mode passes once every summary and every report field is filled in'
 
   assert.equal(result.valid, true);
   assert.deepEqual(result.errors, []);
+});
+
+test('strict mode requires a session title', () => {
+  const story = minimalStory({
+    report: { plan: 'p', decisions: [], outcome: 'completed', outcome_note: null },
+  });
+  story.session.summary = 'Refactored the Panel component.';
+  story.turns[0].summary = 'Added a title prop.';
+
+  const result = validateStory(story, { strict: true });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => /session\.title/.test(e)));
+});
+
+test('strict mode rejects an overlong session title or summary', () => {
+  const story = minimalStory({
+    report: { plan: 'p', decisions: [], outcome: 'completed', outcome_note: null },
+  });
+  story.session.title = 'T'.repeat(61);
+  story.session.summary = 'S'.repeat(241);
+  story.turns[0].summary = 'Added a title prop.';
+
+  const result = validateStory(story, { strict: true });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => /session\.title.*60/.test(e)));
+  assert.ok(result.errors.some((e) => /session\.summary.*240/.test(e)));
 });

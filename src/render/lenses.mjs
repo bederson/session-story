@@ -31,15 +31,26 @@ function shortSha(sha) {
   return sha ? sha.slice(0, 7) : '';
 }
 
+/** Longest title we render; Claude is asked to stay under it too. */
+const TITLE_MAX = 60;
+
 /**
- * What to call this session: the title if one was written, otherwise the
- * first prompt, trimmed. Used for the page <title>, the header heading,
- * the library filename slug, and the index card.
+ * What to call this session. Used for the page <title>, the header heading,
+ * the library filename slug, and the index card. In order: the title Claude
+ * wrote, then the harness's own `ai-title` for the session, then the first
+ * *line* of the first prompt — prompts are often multi-line pastes, and only
+ * their opening line reads as a title. Everything but Claude's title, which
+ * is length-checked in strict validation, is clamped to TITLE_MAX.
  */
 export function storyTitle(story) {
   if (story.session.title) return story.session.title;
+  if (story.session.ai_title) return clampTitle(story.session.ai_title);
   const firstPrompt = story.turns[0] ? story.turns[0].prompt : 'Session story';
-  return firstPrompt.length > 80 ? `${firstPrompt.slice(0, 80)}…` : firstPrompt;
+  return clampTitle(firstPrompt.split('\n')[0].trim() || 'Session story');
+}
+
+function clampTitle(text) {
+  return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX)}…` : text;
 }
 
 export function formatDuration(ms) {

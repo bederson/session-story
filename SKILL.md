@@ -37,7 +37,11 @@ session" / "/story".
    full story.json's hunks.** It carries, per turn: `prompt`,
    `edits[].{rel, kind, stats}`, `commands[].{command, category, ok,
    exit_code}`, `errors[].{tool, target, message}`, and `plan.{approved,
-   excerpt}` when a plan was proposed; and at the top level,
+   excerpt}` when a plan was proposed. An edit carrying `combined_into: N`
+   is a file this turn changed through the shell whose diff git could only
+   keep as the session's net change, shown on turn N — the turn did change
+   code, so summarize it as a change, with zero stats rather than no edit.
+   At the top level the brief carries
    `report.git` (branch and commit range, already extracted) and
    `report.dependencies` (manifest/install/config changes, already
    extracted), plus `hints` — a rough `outcome` guess from the last
@@ -47,9 +51,17 @@ session" / "/story".
 2. **Summarize and write the report.** Using the brief projection from
    step 1, write directly into `<scratch>/story.json` with the Edit tool
    (touch nothing else in the file):
-   - `session.summary`: 2-5 sentences on what was actually done in the
-     session — the final summary shown at the top of the page and in the
-     Report lens. State the outcome plainly, don't just restate the intent.
+   - `session.title`: a short, plain-language name for the session — at
+     most 60 characters, no trailing period. Name what the session *did*
+     ("Session library for stories", "Fix flaky auth test"); never paste
+     or truncate the first prompt. This is the page heading. The brief's
+     `session.ai_title` is the harness's own name for the session — good
+     source material, but rewrite it when it is vague or off.
+   - `session.summary`: one or two sentences, at most 240 characters —
+     the description under the heading, also shown in the Report lens and
+     the library index. Lead with the outcome ("X now does Y"), name what
+     was left out if anything, and don't restate the intent; the longer
+     framing belongs in `report.plan`.
    - `turns[N].summary`: one sentence of intent per turn, in the same
      order as the brief output.
    - `report.plan`: 2-4 sentences on what the session set out to do.

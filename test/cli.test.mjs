@@ -50,6 +50,7 @@ test('extract -> validate -> render produces a story.json and story.html matchin
   await assert.rejects(() => run('node', [binPath, 'validate', storyJsonPath, '--strict']));
 
   const story = JSON.parse(await readFile(storyJsonPath, 'utf8'));
+  story.session.title = 'Panel title prop and README';
   story.session.summary = 'Added a title prop and a README.';
   story.turns[0].summary = 'Added a title prop to Panel.';
   story.turns[1].summary = 'Created the README.';

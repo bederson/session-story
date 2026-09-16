@@ -8,6 +8,9 @@
 const REQUIRED_EDIT_FIELDS = ['id', 'tool', 'file', 'rel', 'hunks', 'stats'];
 const REQUIRED_TURN_FIELDS = ['index', 'id', 'prompt', 'edits'];
 const OUTCOME_VALUES = ['completed', 'partial', 'failed', 'blocked'];
+/** The header is a heading and one tight paragraph; keep both readable there. */
+const TITLE_MAX = 60;
+const SUMMARY_MAX = 240;
 
 function pushIfMissing(errors, obj, field, prefix) {
   if (obj[field] === undefined) {
@@ -48,8 +51,18 @@ export function validateStory(story, { strict = false } = {}) {
     });
   }
 
-  if (strict && story.session && !story.session.summary) {
-    errors.push('session.summary is required in strict mode but is empty');
+  if (strict && story.session) {
+    const { title, summary } = story.session;
+    if (!title) {
+      errors.push('session.title is required in strict mode but is empty');
+    } else if (title.length > TITLE_MAX) {
+      errors.push(`session.title must be at most ${TITLE_MAX} characters but is ${title.length}`);
+    }
+    if (!summary) {
+      errors.push('session.summary is required in strict mode but is empty');
+    } else if (summary.length > SUMMARY_MAX) {
+      errors.push(`session.summary must be at most ${SUMMARY_MAX} characters but is ${summary.length}`);
+    }
   }
 
   if (strict) {

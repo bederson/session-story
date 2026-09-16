@@ -315,3 +315,51 @@ test('keeps a change whose mtime cannot be read', () => {
 
   assert.deepEqual(s.turns[0].edits.map((e) => e.rel), ['old.py']);
 });
+
+test('shows the combined diff on every turn that wrote the file, counted once', () => {
+  // Three turns rewrite the same file through the shell. Git has only the net
+  // change, but a turn that wrote the file did change code, and the story
+  // said "no edits" for the first two.
+  const write = (n) => `python3 - <<'EOF'\np='app.py'\ns=open(p).read().replace('a','${n}')\nopen(p,'w').write(s)\nEOF`;
+  const s = story([
+    turn(1, [{ id: 'b1', command: write(1) }]),
+    turn(2, [{ id: 'b2', command: 'cat app.py' }]),
+    turn(3, [{ id: 'b3', command: write(3) }]),
+  ]);
+  const git = fakeGit({ 'status --porcelain=v1': ' M app.py\n', diff: DIFF, 'show HEAD:app.py': 'keep\nold\ntail\n' });
+
+  fillBashEditsFromGit(s, { git, readText: () => 'keep\nnew\ntail\n' });
+
+  // The net diff stays on the last writer, where git's numbers are true.
+  const [last] = s.turns[2].edits;
+  assert.equal(last.combined_into, undefined);
+  assert.deepEqual(last.stats, { added: 1, removed: 1 });
+
+  // The earlier writer shows the same code, marked as shared with turn 3 and
+  // credited to the command it actually ran.
+  const [first] = s.turns[0].edits;
+  assert.equal(first.rel, 'app.py');
+  assert.equal(first.kind, 'update');
+  assert.equal(first.combined_into, 3);
+  assert.deepEqual(first.hunks, last.hunks);
+  assert.deepEqual(first.stats, { added: 1, removed: 1 });
+  assert.equal(first.command, write(1));
+  // The shared record carries no file text of its own.
+  assert.equal(first.before, null);
+  assert.equal(first.after, null);
+
+  // A turn that only read the file is not a writer and stays empty.
+  assert.deepEqual(s.turns[1].edits, []);
+});
+
+test('does not invent co-edits when the file was only ever mentioned', () => {
+  const s = story([
+    turn(1, [{ id: 'b1', command: 'grep -n x api/other.py' }]),
+    turn(2, [{ id: 'b2', command: 'cat api/other.py' }]),
+  ]);
+  const git = fakeGit({ 'status --porcelain=v1': ' M api/other.py\n', diff: DIFF, 'show HEAD:api/other.py': '' });
+
+  fillBashEditsFromGit(s, { git, readText: () => '' });
+
+  assert.equal(s.turns.flatMap((t) => t.edits).length, 1);
+});
