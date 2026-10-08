@@ -5,6 +5,9 @@
  * documents the same shape for humans and external tooling.
  */
 
+import { EVENT_KINDS, EVENT_STATUSES, DURATION_SOURCES } from './trace.mjs';
+import { FINAL_STATES, METRIC_GROUPS } from './metrics.mjs';
+
 const REQUIRED_EDIT_FIELDS = ['id', 'tool', 'file', 'rel', 'hunks', 'stats'];
 const REQUIRED_TURN_FIELDS = ['index', 'id', 'prompt', 'edits'];
 const OUTCOME_VALUES = ['completed', 'partial', 'failed', 'blocked'];
@@ -45,10 +48,39 @@ export function validateStory(story, { strict = false } = {}) {
           }
         });
       }
+      if (turn.duration_source !== undefined && !DURATION_SOURCES.includes(turn.duration_source)) {
+        errors.push(`${turnPrefix}.duration_source must be one of: ${DURATION_SOURCES.join(', ')}`);
+      }
       if (strict && !turn.summary) {
         errors.push(`${turnPrefix}.summary is required in strict mode but is empty`);
       }
     });
+  }
+
+  // The observability blocks are optional; when present they must be well-formed.
+  if (story.trace !== undefined) {
+    if (!story.trace || !Array.isArray(story.trace.events)) {
+      errors.push('trace.events must be an array');
+    } else {
+      story.trace.events.forEach((event, i) => {
+        const prefix = `trace.events[${i}]`;
+        if (typeof event.id !== 'string') errors.push(`${prefix}.id must be a string`);
+        if (!EVENT_KINDS.includes(event.kind)) errors.push(`${prefix}.kind must be one of: ${EVENT_KINDS.join(', ')}`);
+        if (!EVENT_STATUSES.includes(event.status)) errors.push(`${prefix}.status must be one of: ${EVENT_STATUSES.join(', ')}`);
+        if (event.turn !== null && !Number.isInteger(event.turn)) errors.push(`${prefix}.turn must be an integer or null`);
+      });
+    }
+  }
+  if (story.metrics !== undefined) {
+    for (const group of METRIC_GROUPS) {
+      if (!story.metrics || typeof story.metrics[group] !== 'object' || story.metrics[group] === null) {
+        errors.push(`metrics.${group} is required when metrics is present`);
+      }
+    }
+    const validation = story.metrics && story.metrics.validation;
+    if (validation && !FINAL_STATES.includes(validation.final_state)) {
+      errors.push(`metrics.validation.final_state must be one of: ${FINAL_STATES.join(', ')}`);
+    }
   }
 
   if (strict && story.session) {

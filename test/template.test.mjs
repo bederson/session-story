@@ -117,3 +117,14 @@ test('renderPage library chrome tells the page which session it is', () => {
 
   assert.match(html, /data-session-id="s1"/);
 });
+
+test('renderPage output is unchanged by the Phase 1 trace, metrics and environment blocks', () => {
+  const plain = sampleStory();
+  const enriched = Object.assign(sampleStory(), {
+    trace: { events: [{ id: 'u1', kind: 'prompt', turn: 1, status: 'ok', summary: 'x', started_at: null, ended_at: null, duration_ms: null, source: 'transcript' }], cost_states: [] },
+    metrics: { execution: { turns: 1 }, code: {}, validation: { final_state: 'none' }, reads: {}, usage: {} },
+    environment: { agent: { name: 'Claude Code', version: '2.1.288' }, models: [] },
+  });
+  assert.ok(enriched.trace && !plain.trace);
+  assert.equal(renderPage(enriched), renderPage(plain));
+});

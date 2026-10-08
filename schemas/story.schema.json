@@ -454,6 +454,56 @@
                 }
               }
             }
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How long the turn took. Summed from the harness's system/turn_duration records when present (duration_source \"transcript\"), else prompt-to-last-event wall clock (\"derived\"), else null (\"unknown\"). Never 0 for unknown."
+          },
+          "duration_source": {
+            "type": "string",
+            "enum": [
+              "transcript",
+              "derived",
+              "unknown"
+            ]
+          },
+          "usage": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Token usage of this turn's API calls in the main transcript, counted once per message.id (one assistant record per content block repeats the same usage). null when the turn had no assistant records.",
+            "properties": {
+              "input_tokens": {
+                "type": "integer"
+              },
+              "output_tokens": {
+                "type": "integer"
+              },
+              "cache_read_tokens": {
+                "type": "integer"
+              },
+              "cache_creation_tokens": {
+                "type": "integer"
+              },
+              "api_calls": {
+                "type": "integer"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "complete": {
+                "type": "boolean",
+                "description": "false when some API call carried no usage object."
+              }
+            }
           }
         }
       }
@@ -541,7 +591,8 @@
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "description": "Header counts; unchanged by the observability work. See `metrics` for execution, validation and usage counts."
     },
     "report": {
       "type": "object",
@@ -736,6 +787,436 @@
                   "type": "integer"
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "description": "Normalized, chronological trace of the session: prompts, tool calls and subagents. ids are the transcript's own (user uuid / tool_use id), so turns[].edits[].id, bash[].id and errors[].id join to events by id.",
+      "required": [
+        "events"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "turn",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "prompt",
+                  "tool",
+                  "subagent"
+                ]
+              },
+              "turn": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "parent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "For a subagent's own tool calls: the Agent tool_use event they ran under."
+              },
+              "tool": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "category": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "test",
+                  "lint",
+                  "build",
+                  "install",
+                  "git",
+                  "other",
+                  null
+                ],
+                "description": "Bash only: the command classification from src/ir/commands.mjs."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "error",
+                  "rejected",
+                  "interrupted",
+                  "unknown"
+                ],
+                "description": "unknown when no result record arrived (interrupted session, or a background agent with no completion notice yet)."
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "started_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "ended_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Result timestamp minus tool_use timestamp: a latency that includes permission and hook wait, not the tool's own runtime."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "transcript"
+                ]
+              },
+              "agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Set on subagent events and on events read from a subagent's transcript."
+              },
+              "agent_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ended_source": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "result",
+                  "notification",
+                  "subagent_transcript",
+                  null
+                ],
+                "description": "Subagent events: what closed the event. subagent_transcript is provisional (the last record of its own transcript)."
+              },
+              "usage": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Subagent events only: the subagent transcript's deduped token usage.",
+                "properties": {
+                  "input_tokens": {
+                    "type": "integer"
+                  },
+                  "output_tokens": {
+                    "type": "integer"
+                  },
+                  "cache_read_tokens": {
+                    "type": "integer"
+                  },
+                  "cache_creation_tokens": {
+                    "type": "integer"
+                  },
+                  "api_calls": {
+                    "type": "integer"
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "complete": {
+                    "type": "boolean",
+                    "description": "false when some API call carried no usage object."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "cost_states": {
+          "type": "array",
+          "description": "Claude Code's session-level cost-state records (written at session exit, so usually absent for a live session), one per joined session.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "total_cost_usd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "total_api_duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "total_tool_duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_usage": {
+                "type": "object"
+              },
+              "has_unknown_model_cost": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Reproducibility facts read from the records themselves. Deliberately no hostname, user, home path or runtime of the extracting machine.",
+      "properties": {
+        "agent": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Deterministic session metrics from src/ir/metrics.mjs. Every leaf is a number or null; null means the transcript did not record it and is never written as 0. See that module for the retry, validation and reads definitions.",
+      "required": [
+        "execution",
+        "code",
+        "validation",
+        "reads",
+        "usage"
+      ],
+      "properties": {
+        "execution": {
+          "type": "object",
+          "properties": {
+            "duration_ms": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "turns": {
+              "type": "integer"
+            },
+            "tool_calls": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "failed_tool_calls": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rejected_tool_calls": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "commands": {
+              "type": "integer"
+            },
+            "failed_commands": {
+              "type": "integer"
+            },
+            "retries": {
+              "type": "integer",
+              "description": "Bash runs whose normalized text repeats the most recent earlier run of that text after it failed."
+            }
+          }
+        },
+        "code": {
+          "type": "object",
+          "properties": {
+            "files_changed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "lines_added": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "lines_removed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "edits": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "files_edited_repeatedly": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "rel": {
+                    "type": "string"
+                  },
+                  "edits": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "validation": {
+          "type": "object",
+          "properties": {
+            "commands": {
+              "type": "integer",
+              "description": "Bash runs classified test, lint or build. Command count, not test-case count."
+            },
+            "passed": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "final_state": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "none",
+                "unknown"
+              ]
+            },
+            "last_command": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "reads": {
+          "type": "object",
+          "properties": {
+            "files_read": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Distinct files read with the Read tool (files read through Bash are not detected)."
+            },
+            "tool_calls": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Read, Glob and Grep calls."
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "input_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "output_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cache_read_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cache_creation_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "total_cost_usd": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Only from a cost-state record; never computed from model names."
+            },
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "cost-state",
+                "transcript",
+                "none"
+              ]
+            },
+            "complete": {
+              "type": "boolean"
             }
           }
         }

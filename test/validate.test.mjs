@@ -125,3 +125,34 @@ test('strict mode rejects an overlong session title or summary', () => {
   assert.ok(result.errors.some((e) => /session\.title.*60/.test(e)));
   assert.ok(result.errors.some((e) => /session\.summary.*240/.test(e)));
 });
+
+test('accepts a story with no trace, metrics or environment (older story.json)', () => {
+  assert.equal(validateStory(minimalStory()).valid, true);
+});
+
+test('accepts a well-formed trace and metrics', () => {
+  const story = minimalStory({
+    trace: { events: [{ id: 'u1', kind: 'prompt', turn: 1, status: 'ok' }, { id: 't1', kind: 'tool', turn: 1, status: 'unknown' }], cost_states: [] },
+    metrics: { execution: {}, code: {}, validation: { final_state: 'none' }, reads: {}, usage: {} },
+  });
+  story.turns[0].duration_source = 'derived';
+  assert.deepEqual(validateStory(story).errors, []);
+});
+
+test('rejects an event with an unknown kind or status, and a non-array events list', () => {
+  const bad = minimalStory({ trace: { events: [{ id: 'x', kind: 'command', turn: 1, status: 'ok' }, { id: 'y', kind: 'tool', turn: 1, status: 'crashed' }] } });
+  const result = validateStory(bad);
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => /trace\.events\[0\]\.kind/.test(e)));
+  assert.ok(result.errors.some((e) => /trace\.events\[1\]\.status/.test(e)));
+  assert.ok(validateStory(minimalStory({ trace: { events: 'nope' } })).errors.some((e) => /trace\.events must be an array/.test(e)));
+});
+
+test('rejects metrics missing a group or with an unknown final_state, and a bad duration_source', () => {
+  const result = validateStory(minimalStory({ metrics: { execution: {}, code: {}, validation: { final_state: 'green' }, usage: {} } }));
+  assert.ok(result.errors.some((e) => /metrics\.reads/.test(e)));
+  assert.ok(result.errors.some((e) => /final_state/.test(e)));
+  const story = minimalStory();
+  story.turns[0].duration_source = 'guess';
+  assert.ok(validateStory(story).errors.some((e) => /turns\[0\]\.duration_source/.test(e)));
+});
