@@ -603,3 +603,19 @@ test('Review carries each full-file view once; the Diff lens refers to it instea
   assert.match(diff, /<div class="view view-full" data-full-ref="e1"><\/div>/);
   assert.doesNotMatch(diff, /<table class="hunk full">/);
 });
+
+test('renderDiffLens puts a name filter above the file tree', async () => {
+  const { renderDiffLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [{ index: 1, id: 'u1', prompt: 'Edit', edits: [
+      { id: 'e1', tool: 'Edit', file: '/p/a.js', rel: 'a.js', kind: 'update', by_subagent: null, result: 'ok',
+        hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }], stats: { added: 1, removed: 1 } },
+    ] }],
+    files: [{ rel: 'a.js', language: 'javascript', turns: [1], churn: false, stats: { added: 1, removed: 1 } }],
+  });
+
+  const html = renderDiffLens(story);
+
+  assert.match(html, /<div class="file-nav"><label class="file-search">.*<input type="search"[^>]*aria-label="Filter files by name".*<ul class="file-tree">/);
+  assert.match(html, /<p class="file-search-empty" hidden>No files match\.<\/p>/);
+});

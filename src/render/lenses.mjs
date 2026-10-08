@@ -540,7 +540,13 @@ export function renderDiffLens(story) {
     (allOutside
       ? `<p class="no-edits only-when-filtered">${icon('filter')}Every edited file is outside the project.</p>`
       : '') +
+    `<div class="file-nav">` +
+    `<label class="file-search">${icon('search')}` +
+    `<input type="search" placeholder="Filter files" aria-label="Filter files by name" autocomplete="off" spellcheck="false">` +
+    `</label>` +
     `<ul class="file-tree">${treeItems}</ul>` +
+    `<p class="file-search-empty" hidden>No files match.</p>` +
+    `</div>` +
     `<div class="file-panels">${panels}</div>` +
     `</div>`
   );

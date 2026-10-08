@@ -194,6 +194,14 @@ tr.hunk-line.del td.ln.old { background: var(--del-bg); color: var(--del); }
 .diff-lens { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .diff-lens.empty { display: block; }
 .diff-lens.empty .no-edits { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.file-nav { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.file-search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 0 10px; color: var(--text-3); }
+.file-search:focus-within { border-color: var(--accent-ring); }
+.file-search input { flex: 1; min-width: 0; border: none; background: none; color: var(--text); font-family: var(--mono); font-size: 12.5px; padding: 8px 0; }
+.file-search input:focus { outline: none; }
+html:not(.js) .file-search { display: none; }
+.file-tree-item.name-hidden { display: none; }
+.file-search-empty { margin: 0; padding: 8px 10px; color: var(--text-3); font-size: 12.5px; font-style: italic; }
 .file-tree { list-style: none; margin: 0; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: 2px; }
 .file-tree-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-family: var(--mono); font-size: 12.5px; color: var(--text-2); transition: background .15s ease, color .15s ease; }
 .file-tree-item .icon { color: var(--text-3); }
@@ -463,7 +471,28 @@ const SCRIPT = THEME_TOGGLE_JS + `
     void target.offsetWidth; // restart the animation when the same edit is revealed twice
     target.classList.add('flash');
   }
-  wireList('.file-tree-item', '.file-panel', 'file', 'filePanel');
+  var fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel');
+  // Filter the Diff file tree by name. If the open file drops out, the
+  // first match opens instead, so the panel always belongs to a listed file.
+  var fileSearch = document.querySelector('.file-search input');
+  if (fileSearch) {
+    var noMatch = document.querySelector('.file-search-empty');
+    function listed(item) {
+      return !item.classList.contains('name-hidden') && (item.dataset.outside !== '1' || root.classList.contains('show-outside'));
+    }
+    function filterFiles() {
+      var q = fileSearch.value.trim().toLowerCase();
+      fileTree.items.forEach(function (item) {
+        item.classList.toggle('name-hidden', !!q && item.dataset.file.toLowerCase().indexOf(q) === -1);
+      });
+      var shown = fileTree.items.filter(listed);
+      if (noMatch) noMatch.hidden = shown.length > 0 || fileTree.items.length === 0;
+      var current = fileTree.items.filter(function (item) { return item.classList.contains('selected'); })[0];
+      if (shown.length > 0 && (!current || !listed(current))) fileTree.select(shown[0].dataset.file);
+    }
+    fileSearch.addEventListener('input', filterFiles);
+    if (scopeToggle) scopeToggle.addEventListener('click', filterFiles);
+  }
 ${TRACE_SCRIPT}
   Array.prototype.forEach.call(document.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
 
