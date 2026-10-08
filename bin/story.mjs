@@ -6,6 +6,7 @@ import { parseTranscript } from '../src/transcript/parse.mjs';
 import { locateSession, locateSubagents, locateChain, defaultClaudeDir, subagentMetaPath } from '../src/transcript/locate.mjs';
 import { buildStory, refreshDerived } from '../src/transcript/claude-code.mjs';
 import { fillBashEditsFromGit } from '../src/ir/git-edits.mjs';
+import { computeMetrics } from '../src/ir/metrics.mjs';
 import { fillBasesFromDisk } from '../src/ir/disk-base.mjs';
 import { buildDependencies } from '../src/ir/dependencies.mjs';
 import { fillGitState } from '../src/ir/git-state.mjs';
@@ -58,6 +59,13 @@ function outcomeHints(story) {
   return { outcome, failed_validations };
 }
 
+/** Tool calls (any tool, main or subagent) the trace attributes to one turn. */
+function toolCallsInTurn(story, index) {
+  const events = (story.trace && story.trace.events) || null;
+  if (!events) return null;
+  return events.filter((e) => e.turn === index && e.kind !== 'prompt').length;
+}
+
 function briefProjection(story) {
   return {
     session: {
@@ -72,6 +80,16 @@ function briefProjection(story) {
       dependencies: story.report.dependencies,
     },
     hints: outcomeHints(story),
+    environment: story.environment || null,
+    metrics: story.metrics
+      ? {
+        ...story.metrics,
+        code: {
+          ...story.metrics.code,
+          files_edited_repeatedly: (story.metrics.code.files_edited_repeatedly || []).slice(0, 5),
+        },
+      }
+      : null,
     turns: story.turns.map((t) => ({
       index: t.index,
       prompt: t.prompt,
@@ -81,6 +99,8 @@ function briefProjection(story) {
       commands: (t.bash || []).map((b) => ({ command: b.command, category: b.category, ok: b.ok, exit_code: b.exit_code })),
       errors: (t.errors || []).map((e) => ({ tool: e.tool, target: e.target, message: e.message })),
       plan: t.plan ? { approved: t.plan.approved, excerpt: t.plan.text.slice(0, 1500) } : null,
+      duration_ms: t.duration_ms === undefined ? null : t.duration_ms,
+      tool_calls: toolCallsInTurn(story, t.index),
     })),
   };
 }
@@ -172,6 +192,8 @@ async function cmdExtract(opts) {
   fillBasesFromDisk(story);
   story.report.dependencies = buildDependencies(story);
   if (opts.git !== false) fillGitState(story);
+  // Metrics come last: the git pass above can add edits and change totals.
+  story.metrics = computeMetrics(story);
   story.generator = { name: 'metafyl-story', version: '0.1.0' };
   const gitCommits = (story.report.git && story.report.git.commits) || [];
   story.session.blind_spots = blindSpots({

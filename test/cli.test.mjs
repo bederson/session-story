@@ -290,3 +290,43 @@ test('an unreadable manifest is kept aside rather than silently overwritten', as
   const manifest = JSON.parse(await readFile(path.join(libDir, 'index.json'), 'utf8'));
   assert.equal(manifest.entries.length, 1);
 });
+
+test('extract writes trace, metrics and environment, and --brief carries metrics and per-turn timing', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'story-cli-trace-'));
+  const claudeDir = path.join(workdir, 'claude-projects');
+  const slugDir = path.join(claudeDir, '-proj');
+  await mkdir(slugDir, { recursive: true });
+  await cp(path.join(__dirname, 'fixtures', 'trace-session.jsonl'), path.join(slugDir, 'sess-trace.jsonl'));
+  const storyJsonPath = path.join(workdir, 'story.json');
+
+  const { stdout } = await run('node', [binPath, 'extract', '--claude-dir', claudeDir, '--cwd', '/proj', '--session', 'sess-trace', '-o', storyJsonPath, '--brief']);
+  const brief = JSON.parse(stdout);
+  const story = JSON.parse(await readFile(storyJsonPath, 'utf8'));
+
+  assert.equal(story.trace.events.length, 5);
+  assert.deepEqual(story.trace.events.map((e) => e.id), ['u1', 'tu1', 'tu2', 'tu3', 'tu4']);
+  assert.equal(story.turns[0].duration_ms, 18000);
+  assert.equal(story.turns[0].duration_source, 'transcript');
+  assert.equal(story.turns[0].usage.api_calls, 4);
+  assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: '2.1.288' }, models: ['claude-opus-5-5'] });
+  assert.deepEqual(story.metrics.execution, { duration_ms: 18500, turns: 1, tool_calls: 4, failed_tool_calls: 1, rejected_tool_calls: 0, commands: 2, failed_commands: 1, retries: 1 });
+  assert.deepEqual(story.metrics.validation, { commands: 2, passed: 1, failed: 1, final_state: 'passed', last_command: 'npm test' });
+  assert.deepEqual(story.metrics.reads, { files_read: 1, tool_calls: 1 });
+  assert.equal(story.metrics.usage.source, 'cost-state');
+  assert.equal(story.metrics.usage.total_cost_usd, 0.05);
+  assert.equal(story.metrics.code.lines_added, 1);
+
+  assert.equal(brief.metrics.execution.retries, 1);
+  assert.equal(brief.metrics.usage.total_cost_usd, 0.05);
+  assert.equal(brief.turns[0].duration_ms, 18000);
+  assert.equal(brief.turns[0].tool_calls, 4);
+  assert.equal(brief.environment.agent.version, '2.1.288');
+
+  // non-strict validate accepts the new blocks; render still works and still has four lenses
+  await run('node', [binPath, 'validate', storyJsonPath]);
+  const htmlPath = path.join(workdir, 'story.html');
+  await run('node', [binPath, 'render', storyJsonPath, '-o', htmlPath]);
+  const html = await readFile(htmlPath, 'utf8');
+  assert.match(html, /id="lens-report"/);
+  assert.doesNotMatch(html, /id="lens-trace"/);
+});
