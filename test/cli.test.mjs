@@ -330,3 +330,15 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.match(html, /id="lens-report"/);
   assert.doesNotMatch(html, /id="lens-trace"/);
 });
+
+test('extract --latest -o <file> writes to the given file (a boolean flag must not eat -o)', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'story-cli-latest-'));
+  const claudeDir = path.join(workdir, 'claude-projects');
+  const slugDir = path.join(claudeDir, '-proj');
+  await mkdir(slugDir, { recursive: true });
+  await cp(path.join(__dirname, 'fixtures', 'simple-session.jsonl'), path.join(slugDir, 'sess-1.jsonl'));
+  const out = path.join(workdir, 'out.json');
+  await run('node', [binPath, 'extract', '--claude-dir', claudeDir, '--cwd', '/proj', '--latest', '-o', out], { cwd: workdir });
+  const story = JSON.parse(await readFile(out, 'utf8'));
+  assert.equal(story.session.id, 'sess-1');
+});

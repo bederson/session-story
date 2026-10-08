@@ -28,7 +28,9 @@ function parseArgs(argv) {
     } else if (arg.startsWith('--')) {
       const key = arg.slice(2);
       const next = rest[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
+      // `-o` is the only short flag; it starts the next option rather than
+      // being this one's value (`--latest -o story.json`).
+      if (next !== undefined && !next.startsWith('--') && next !== '-o') {
         opts[key] = next;
         i++;
       } else {
