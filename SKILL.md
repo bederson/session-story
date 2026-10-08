@@ -46,7 +46,12 @@ session" / "/story".
    `report.dependencies` (manifest/install/config changes, already
    extracted), plus `hints` — a rough `outcome` guess from the last
    test/lint/build command and `failed_validations` excerpts to help you
-   write resolutions.
+   write resolutions. The brief also carries `metrics` (execution, code,
+   validation, reads, usage — deterministic counts with `null` for anything
+   the transcript did not record), `environment` (agent version and model
+   ids) and, per turn, `duration_ms` and `tool_calls`. Use them to inform
+   `report.outcome` and `outcome_note`; never restate or recompute them,
+   and never write a number the brief shows as `null`.
 
 2. **Summarize and write the report.** Using the brief projection from
    step 1, write directly into `<scratch>/story.json` with the Edit tool
