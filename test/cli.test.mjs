@@ -328,7 +328,9 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   await run('node', [binPath, 'render', storyJsonPath, '-o', htmlPath]);
   const html = await readFile(htmlPath, 'utf8');
   assert.match(html, /id="lens-report"/);
-  assert.doesNotMatch(html, /id="lens-trace"/);
+  assert.match(html, /id="lens-trace"/);
+  assert.equal((html.match(/class="lens-tab"/g) || []).length, 5);
+  assert.match(html, /data-jump-edit="tu3"/);
 });
 
 test('extract --latest -o <file> writes to the given file (a boolean flag must not eat -o)', async () => {

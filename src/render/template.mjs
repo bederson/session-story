@@ -2,6 +2,7 @@ import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle } from './lenses.mjs';
 import { renderReportLens } from './report.mjs';
+import { renderTraceLens, hasTrace, TRACE_CSS } from './trace-lens.mjs';
 import { resetFullViewBudget } from './full-view.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
 
@@ -295,6 +296,7 @@ ${OUTCOME_CSS}
 }
 
 /* ---- print -------------------------------------------------------------- */
+${TRACE_CSS}
 @media print {
   :root { --bg: #fff; --surface: #fff; --surface-2: #f6f6f6; --surface-3: #eee; --shadow-1: none; --shadow-2: none; }
   body { font-size: 12px; }
@@ -468,7 +470,8 @@ const LIBRARY_SCRIPT = `
 
 /**
  * Assemble the full, self-contained session-story HTML page: header,
- * lens navigation, all three lenses, inline CSS and JS.
+ * lens navigation, every lens (Review, Diff, Story, Report, and Trace when
+ * the story has a trace), inline CSS and JS.
  * @param {object} story - the Story IR
  * @param {object} [opts]
  * @param {{indexHref: string, manifestHref: string}} [opts.library] - when the
@@ -498,6 +501,7 @@ export function renderPage(story, opts = {}) {
     libraryNav(story, opts.library) +
     `<div class="tabs" role="tablist" aria-label="Views">` +
     lensTab('review', 'Review') + lensTab('diff', 'Diff') + lensTab('story', 'Story') + lensTab('report', 'Report') +
+    (hasTrace(story) ? lensTab('trace', 'Trace') : '') +
     `</div>` +
     `<span class="lens-hint">${icon('keyboard')}<kbd>j</kbd><kbd>k</kbd> turns</span>` +
     `<span class="nav-opts">` +
@@ -512,6 +516,9 @@ export function renderPage(story, opts = {}) {
     `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${renderDiffLens(story)}</section>\n` +
     `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${renderStoryLens(story)}</section>\n` +
     `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${renderReportLens(story)}</section>\n` +
+    (hasTrace(story)
+      ? `<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">${renderTraceLens(story)}</section>\n`
+      : '') +
     `<script>${SCRIPT}</script>\n` +
     (library ? `<script>${LIBRARY_SCRIPT}</script>\n` : '') +
     `</body>\n` +

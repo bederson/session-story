@@ -118,13 +118,24 @@ test('renderPage library chrome tells the page which session it is', () => {
   assert.match(html, /data-session-id="s1"/);
 });
 
-test('renderPage output is unchanged by the Phase 1 trace, metrics and environment blocks', () => {
-  const plain = sampleStory();
-  const enriched = Object.assign(sampleStory(), {
+test('a story with a trace gets a fifth Trace tab and section after Report', () => {
+  const story = Object.assign(sampleStory(), {
     trace: { events: [{ id: 'u1', kind: 'prompt', turn: 1, status: 'ok', summary: 'x', started_at: null, ended_at: null, duration_ms: null, source: 'transcript' }], cost_states: [] },
-    metrics: { execution: { turns: 1 }, code: {}, validation: { final_state: 'none' }, reads: {}, usage: {} },
-    environment: { agent: { name: 'Claude Code', version: '2.1.288' }, models: [] },
+    metrics: { execution: { turns: 1 }, code: {}, validation: { final_state: 'none' }, reads: {}, usage: { source: 'none' } },
   });
-  assert.ok(enriched.trace && !plain.trace);
-  assert.equal(renderPage(enriched), renderPage(plain));
+  const html = renderPage(story);
+  assert.match(html, /id="tab-report"[\s\S]*id="tab-trace"/);
+  assert.match(html, /<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">/);
+});
+
+test('a story without a trace (older story.json) gets no Trace tab', () => {
+  const html = renderPage(sampleStory());
+  assert.doesNotMatch(html, /tab-trace|id="lens-trace"/);
+  assert.match(html, /id="lens-report"/);
+});
+
+test('the page references nothing over the network', () => {
+  const html = renderPage(Object.assign(sampleStory(), { trace: { events: [] } }));
+  assert.doesNotMatch(html, /(src|href)="(https?:)?\/\//);
+  assert.doesNotMatch(html, /@import|url\(http/);
 });
