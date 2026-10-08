@@ -104,7 +104,8 @@ session" / "/story".
    The page lands in the project's `.session-stories/` library as
    `<date>-<session-id>-<slug>.html`, so each session keeps its own file
    instead of overwriting the last one, and a regenerated
-   `.session-stories/index.html` lists every session with a filter. Each
+   `.session-stories/index.html` lists every session with a search box,
+   time period filters, and token and cost totals. Each
    page also gets a session switcher in its nav. Re-rendering the same
    session overwrites its file and refreshes its index entry. Pass
    `--library <dir>` for another folder, or `-o <file>` / `--no-library`

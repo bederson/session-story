@@ -20,11 +20,57 @@ function inProject(edits) {
  * for each scope; CSS shows whichever matches the current toggle, so the
  * page needs no arithmetic of its own.
  */
-function dual(inValue, allValue) {
+export function dual(inValue, allValue) {
   return `<span class="v-in">${inValue}</span><span class="v-all">${allValue}</span>`;
 }
 
 const MINUS = '−'; // U+2212, reads as a proper minus next to "+"
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+export function formatTokens(n) {
+  if (!isNum(n)) return null;
+  if (n < 1000) return String(n);
+  if (n < 1e6) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1e6).toFixed(1)}M`;
+}
+
+export function formatCost(usd) {
+  if (!isNum(usd)) return null;
+  return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
+}
+
+/** Input tokens including cache reads and writes, or null if any part is unknown. */
+export function inputWithCache(u) {
+  const parts = [u.input_tokens, u.cache_read_tokens, u.cache_creation_tokens];
+  return parts.every(isNum) ? parts.reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * The three usage numbers the header and the library show, from
+ * `story.metrics.usage`; each is null when the session did not record it.
+ */
+export function usageTotals(story) {
+  const u = (story && story.metrics && story.metrics.usage) || {};
+  return {
+    input_tokens: inputWithCache(u),
+    output_tokens: isNum(u.output_tokens) ? u.output_tokens : null,
+    cost_usd: isNum(u.total_cost_usd) ? u.total_cost_usd : null,
+  };
+}
+
+/** Stat tiles for token usage and cost; tiles for unknown values are left out. */
+function usageTiles(story) {
+  const u = usageTotals(story);
+  const input = formatTokens(u.input_tokens);
+  const output = formatTokens(u.output_tokens);
+  const cost = formatCost(u.cost_usd);
+  return (
+    (input ? statTile('sparkle', input, 'input tokens incl. cache') : '') +
+    (output ? statTile('sparkle', output, 'output tokens') : '') +
+    (cost ? statTile('cost', cost, 'cost') : '')
+  );
+}
 export const OUTCOME_LABELS = { completed: 'Completed', partial: 'Partial', failed: 'Failed', blocked: 'Blocked' };
 
 function shortSha(sha) {
@@ -223,10 +269,12 @@ export function renderHeader(story) {
     : '';
 
   const allEdits = story.turns.flatMap((t) => t.edits);
-  const insideEdits = inProject(allEdits);
+  // A `combined_into` edit repeats a share of another turn's diff; the
+  // session totals skip it, so the project-only numbers must too.
+  const insideEdits = inProject(allEdits.filter((e) => !e.combined_into));
   const inFiles = new Set(insideEdits.map((e) => e.rel)).size;
   const inStats = statsOf(insideEdits);
-  const outsideEdits = allEdits.filter((e) => e.outside_cwd);
+  const outsideEdits = allEdits.filter((e) => e.outside_cwd && !e.combined_into);
   const outsideFiles = new Set(outsideEdits.map((e) => e.rel)).size;
   const outsideNote = outsideEdits.length > 0
     ? `<p class="outside-note only-when-filtered">${icon('filter')}<span>` +
@@ -254,6 +302,7 @@ export function renderHeader(story) {
     statTile('files', dual(inFiles, totals.files), plural(totals.files, 'file')) +
     statTile('plus', dual(`+${inStats.added}`, `+${totals.added}`), 'added', 'added') +
     statTile('minus', dual(`${MINUS}${inStats.removed}`, `${MINUS}${totals.removed}`), 'removed', 'removed') +
+    usageTiles(story) +
     `</div>` +
     renderSessionStrip(story.turns) +
     outsideNote +
@@ -302,6 +351,36 @@ function panelMeta(turn) {
   return `<span class="panel-meta">${dual(describe(inProject(turn.edits)), describe(turn.edits))}</span>`;
 }
 
+function editStats({ added, removed }) {
+  return `<span class="edit-stats"><span class="add">+${added}</span><span class="del">${MINUS}${removed}</span></span>`;
+}
+
+/**
+ * Buttons that narrow a turn panel to one file's edits, or back to all of
+ * them. The page script does the hiding; a single-file turn gets no bar.
+ */
+function renderFileFilter(edits) {
+  const files = new Map();
+  for (const edit of edits) {
+    if (!files.has(edit.rel)) files.set(edit.rel, { outside: edit.outside_cwd, edits: [] });
+    files.get(edit.rel).edits.push(edit);
+  }
+  if (files.size < 2) return '';
+  const buttons = [...files].map(([rel, { outside, edits: fileEdits }]) =>
+    `<button type="button" class="file-filter-btn" data-file-filter="${escapeHtml(rel)}" aria-pressed="false"` +
+    `${outside ? ' data-outside="1"' : ''} title="Show only this file's changes">` +
+    `<span class="file-filter-name">${escapeHtml(rel)}</span>${editStats(statsOf(fileEdits))}</button>`
+  );
+  return (
+    `<div class="file-filter" role="group" aria-label="Show changes for">` +
+    `<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="true">` +
+    `${icon('review')}<span class="file-filter-name">All changes</span>` +
+    `${dual(editStats(statsOf(inProject(edits))), editStats(statsOf(edits)))}</button>` +
+    buttons.join('') +
+    `</div>`
+  );
+}
+
 /**
  * Review lens: a timeline of turns on the left (numbered node on a rail,
  * full prompt, intent, activity bar, file chips), each linked by data-turn
@@ -348,6 +427,7 @@ export function renderReviewLens(story) {
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
+        renderFileFilter(turn.edits) +
         filteredNote +
         editsHtml +
         `</section>`
@@ -441,8 +521,14 @@ export function renderStoryLens(story) {
         const n = new Set(edits.map((e) => e.rel)).size;
         return `${n} ${plural(n, 'file')} changed`;
       };
-      const editsHtml = turn.edits.length > 0
-        ? turn.edits.map((edit) => renderEdit(edit, { fullView: false })).join('')
+      // Only edits with a diff go behind "Show code": a failed, interrupted or
+      // binary edit has no code to show, and a toggle that opens onto nothing
+      // is noise. When every one of them is outside the project, the toggle
+      // hides with the project filter, like the edits inside it would.
+      const codeEdits = turn.edits.filter((edit) => edit.hunks && edit.hunks.length > 0);
+      const editsHtml = codeEdits.map((edit) => renderEdit(edit, { fullView: false })).join('');
+      const codeOutside = codeEdits.length > 0 && codeEdits.every((edit) => edit.outside_cwd)
+        ? ' data-outside="1"'
         : '';
       return (
         `<article class="story-card">` +
@@ -453,7 +539,7 @@ export function renderStoryLens(story) {
         `<p class="story-filecount">${icon('files')}` +
         dual(countPhrase(inProject(turn.edits)), countPhrase(turn.edits)) + `</p>` +
         (editsHtml
-          ? `<details class="story-code"><summary>${icon('code')}Show code</summary>${editsHtml}</details>`
+          ? `<details class="story-code"${codeOutside}><summary>${icon('code')}Show code</summary>${editsHtml}</details>`
           : '') +
         `</article>`
       );

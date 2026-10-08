@@ -91,6 +91,40 @@ test('renderReviewLens renders each file chip as a button keyed to the file, so 
   assert.match(html, /class="chip" data-file="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
 });
 
+test('renderReviewLens gives a multi-file turn panel a file filter: "All changes" plus one button per file', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'Two files', summary: '', edits: [
+        { id: 'e1', tool: 'Edit', file: '/p/src/a.ts', rel: 'src/a.ts', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 2, removed: 1 } },
+        { id: 'e2', tool: 'Edit', file: '/p/src/a.ts', rel: 'src/a.ts', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 3, removed: 0 } },
+        { id: 'e3', tool: 'Edit', file: '/tmp/s.json', rel: '../../tmp/s.json', outside_cwd: true, kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
+      ] },
+      { index: 2, id: 'u2', at: null, prompt: 'One file', summary: '', edits: [
+        { id: 'e4', tool: 'Edit', file: '/p/src/a.ts', rel: 'src/a.ts', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
+      ] },
+    ],
+    files: [],
+  });
+
+  const html = renderReviewLens(story);
+  const panel1 = html.slice(html.indexOf('data-turn-panel="1"'), html.indexOf('data-turn-panel="2"'));
+  const panel2 = html.slice(html.indexOf('data-turn-panel="2"'));
+
+  assert.match(panel1, /<div class="file-filter" role="group" aria-label="Show changes for">/);
+  assert.match(panel1, /<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="true">[^]*?All changes/);
+  // "All changes" totals follow the scope toggle, like the panel meta
+  assert.match(panel1, /All changes<\/span><span class="v-in">[^]*?\+5[^]*?<span class="v-all">[^]*?\+6/);
+  // one button per distinct file, carrying that file's summed stats
+  const fileButtons = panel1.match(/data-file-filter="src\/a\.ts"/g) || [];
+  assert.equal(fileButtons.length, 1);
+  assert.match(panel1, /data-file-filter="src\/a\.ts" aria-pressed="false"[^>]*>[^]*?\+5/);
+  // an outside-project file's button hides with the scope toggle like its edits do
+  assert.match(panel1, /data-file-filter="\.\.\/\.\.\/tmp\/s\.json" aria-pressed="false" data-outside="1"/);
+  // a single-file turn has nothing to filter
+  assert.doesNotMatch(panel2, /file-filter/);
+});
+
 test('renderReviewLens escapes quotes in a file chip key', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
@@ -236,6 +270,20 @@ test('renderHeader carries both in-project and overall counts, two session strip
   assert.match(html, /class="session-strip" data-scope="all"/);
   assert.match(html, /class="outside-note only-when-filtered"/);
   assert.match(html, /outside the project/i);
+});
+
+test('renderHeader skips combined_into shares in its project-only counts, as the session totals do', () => {
+  const story = outsideStory();
+  const inside = story.turns[0].edits[0];
+  const outside = story.turns[0].edits[1];
+  story.turns[1].edits = [{ ...inside, id: 'e3', combined_into: 1 }, { ...outside, id: 'e4', combined_into: 1 }];
+  story.totals = { turns: 2, files: 2, added: 7, removed: 5, edits: 2 };
+
+  const html = renderHeader(story);
+
+  assert.match(html, /<span class="v-in">\+2<\/span><span class="v-all">\+7<\/span>/);
+  assert.match(html, /<span class="v-in">−0<\/span><span class="v-all">−5<\/span>/);
+  assert.match(html, /\(1 edit\) hidden/);
 });
 
 test('renderReviewLens marks out-of-project edits and chips, and explains a turn left empty by the filter', async () => {
@@ -390,6 +438,25 @@ test('renderHeader shows when the session started and ended', () => {
   assert.match(html, /2026-09-10 10:00 → 10:05 UTC/);
 });
 
+test('renderHeader shows input tokens incl. cache, output tokens and cost when the story has usage', () => {
+  const html = renderHeader(sampleStory({
+    metrics: { usage: { input_tokens: 1200, cache_read_tokens: 150000, cache_creation_tokens: 27517, output_tokens: 860, total_cost_usd: 4.2226 } },
+  }));
+  assert.equal((html.match(/class="stat-tile/g) || []).length, 7);
+  assert.match(html, /<span class="stat-value">178\.7k<\/span>\s*<span class="stat-label">input tokens incl\. cache<\/span>/);
+  assert.match(html, /<span class="stat-value">860<\/span>\s*<span class="stat-label">output tokens<\/span>/);
+  assert.match(html, /<span class="stat-value">\$4\.22<\/span>\s*<span class="stat-label">cost<\/span>/);
+});
+
+test('renderHeader leaves out usage tiles it has no numbers for', () => {
+  const transcriptOnly = renderHeader(sampleStory({
+    metrics: { usage: { input_tokens: 10, cache_read_tokens: 0, cache_creation_tokens: 0, output_tokens: 5, total_cost_usd: null } },
+  }));
+  assert.equal((transcriptOnly.match(/class="stat-tile/g) || []).length, 6);
+  assert.doesNotMatch(transcriptOnly, /stat-label">cost</);
+  assert.equal((renderHeader(sampleStory()).match(/class="stat-tile/g) || []).length, 4);
+});
+
 test('renderReviewLens stamps each timeline item and turn panel with when the prompt was sent', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const html = renderReviewLens(sampleStory());
@@ -402,4 +469,47 @@ test('renderReviewLens omits the timestamp for a turn without one', async () => 
   const story = sampleStory();
   story.turns[0].at = null;
   assert.doesNotMatch(renderReviewLens(story), /turn-time/);
+});
+
+test('renderStoryLens offers no "Show code" for a turn whose edits carry no diff', async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [{ index: 1, id: 'u1', prompt: 'p', summary: 'S.', edits: [
+      { id: 'e1', tool: 'Edit', file: '/p/a.ts', rel: 'a.ts', kind: 'update', by_subagent: null, result: 'error', error: 'old_string not found', hunks: [], stats: { added: 0, removed: 0 } },
+      { id: 'e2', tool: 'Bash', file: '/p/logo.png', rel: 'logo.png', kind: 'update', by_subagent: null, result: 'ok', binary: true, hunks: [], stats: { added: 0, removed: 0 } },
+    ] }],
+  });
+
+  assert.doesNotMatch(renderStoryLens(story), /Show code/);
+});
+
+test('renderStoryLens shows only edits with a diff under "Show code"', async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [{ index: 1, id: 'u1', prompt: 'p', summary: 'S.', edits: [
+      { id: 'e1', tool: 'Edit', file: '/p/a.ts', rel: 'a.ts', kind: 'update', by_subagent: null, result: 'error', error: 'old_string not found', hunks: [], stats: { added: 0, removed: 0 } },
+      { id: 'e2', tool: 'Edit', file: '/p/b.ts', rel: 'b.ts', kind: 'update', by_subagent: null, result: 'ok',
+        hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }], stats: { added: 1, removed: 1 } },
+    ] }],
+  });
+
+  const html = renderStoryLens(story);
+
+  assert.match(html, /<details class="story-code">/);
+  assert.match(html, /data-file="b\.ts"/);
+  assert.doesNotMatch(html, /data-file="a\.ts"/);
+});
+
+test('renderStoryLens hides "Show code" with the project filter when every change is outside the project', async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = outsideStory();
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-x', '+y'] }];
+  for (const turn of story.turns) turn.edits = turn.edits.map((e) => (e.outside_cwd ? { ...e, hunks } : e));
+  const html = renderStoryLens(story);
+  const turn2 = html.slice(html.lastIndexOf('<article'));
+
+  // turn 2 only touched ../../tmp/s.json, so its toggle hides while "Project files only" is on
+  assert.match(turn2, /<details class="story-code" data-outside="1">/);
+  // turn 1 has a project change, so its toggle always shows
+  assert.match(html.slice(0, html.lastIndexOf('<article')), /<details class="story-code">/);
 });

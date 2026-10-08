@@ -61,7 +61,10 @@ session, named by date, session id, and a slug of the title:
 ```
 
 `index.html` lists every session — date, title, outcome, summary, turns,
-files, lines added and removed — with a filter box, and every story page
+files, lines added and removed, input and output tokens, and cost when
+Claude Code recorded it — with a filter box and time period filters (today,
+last 7 or 30 days, this or last calendar month, all time); the totals line
+adds up whichever sessions are shown. Every story page
 gets an "All sessions" link and a session switcher in its nav. Re-rendering
 a session overwrites its own file rather than piling up copies.
 
@@ -76,7 +79,7 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 | View       | Best for                         | Shows                                                                                         |
 | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, files touched — linked to that turn's diff |
+| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, files touched — linked to that turn's diff, which you can narrow to one file or show as all changes |
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
 | **Story**  | A stakeholder who wants the gist | A narrative card per turn, code collapsed by default                                          |
 | **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |

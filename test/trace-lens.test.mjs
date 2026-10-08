@@ -47,6 +47,28 @@ test('scorecard shows duration, calls, failures, files, validation, retries, tok
   }
 });
 
+test('code counts render both scopes so the "Project files only" toggle picks one, like the header', () => {
+  const code = {
+    files_changed: 30, lines_added: 900, lines_removed: 40, edits: 60,
+    in_project: { files_changed: 28, lines_added: 850, lines_removed: 38, edits: 55 },
+    files_edited_repeatedly: [{ rel: '~/.claude/x.md', edits: 2, outside_cwd: true }, { rel: 'src/a.js', edits: 3 }],
+  };
+  const card = renderScorecard(metrics({ code }));
+  assert.match(card, /<span class="v-in">28<\/span><span class="v-all">30<\/span>/);
+  const panel = renderMetrics({ metrics: metrics({ code }) });
+  for (const [inV, allV] of [[28, 30], [850, 900], [38, 40], [55, 60]]) {
+    assert.ok(panel.includes(`<span class="v-in">${inV}</span><span class="v-all">${allV}</span>`), `missing ${inV}/${allV}`);
+  }
+  assert.match(panel, /<li data-outside="1"><code>~\/\.claude\/x\.md<\/code>/);
+  assert.match(panel, /<li><code>src\/a\.js<\/code>/);
+});
+
+test('code counts from metrics without in_project show the single total', () => {
+  const card = renderScorecard(metrics());
+  assert.doesNotMatch(card, /v-in/);
+  assert.match(card, /1<\/span> <span class="stat-label">file changed/);
+});
+
 test('scorecard omits tiles for unknown values instead of showing 0', () => {
   const html = renderScorecard(metrics({
     execution: { duration_ms: null, turns: 1, tool_calls: null, failed_tool_calls: null, rejected_tool_calls: null, commands: 0, failed_commands: 0, retries: 0 },

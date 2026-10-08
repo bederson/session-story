@@ -37,7 +37,7 @@ ${BASE_CSS}
 .story-header .meta .commits code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
 .eyebrow .outcome-pill { margin-left: 4px; padding: 2px 10px; font-size: 10px; }
 .story-header .summary { margin: 0 0 22px; max-width: 72ch; font-size: 15px; color: var(--text); }
-.totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
+.totals { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; max-width: 1180px; }
 .stat-tile { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); min-width: 0; }
 .stat-icon { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); flex-shrink: 0; }
 .stat-tile.added .stat-icon { background: var(--add-bg); color: var(--add); }
@@ -140,6 +140,15 @@ html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border
 .turn-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
 .turn-panel + .turn-panel { margin-top: 20px; }
 html.js .turn-panel:not(.active) { display: none; }
+.file-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+html:not(.js) .file-filter { display: none; }
+.file-filter-btn { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; appearance: none; background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; color: var(--text-2); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; text-align: left; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.file-filter-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.file-filter-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.file-filter-btn .icon { width: 13px; height: 13px; }
+.file-filter-name { overflow-wrap: anywhere; }
+.file-filter-btn .edit-stats { margin-left: 0; }
+.edit.file-hidden { display: none; }
 
 /* ---- edits & hunks ------------------------------------------------------ */
 .edit { scroll-margin-top: 72px; } /* clear the sticky lens nav when a chip scrolls here */
@@ -302,6 +311,8 @@ ${TRACE_CSS}
   body { font-size: 12px; }
   .lens-nav, .header-motif, .lens-hint { display: none !important; }
   .lens-section, .turn-panel, .file-panel { display: block !important; }
+  .file-filter { display: none !important; }
+  .edit.file-hidden { display: block; }
   .lens-section { padding: 16px 0; border-top: 1px solid #ccc; }
   .story-code { display: block; }
   .story-code summary { display: none; }
@@ -362,7 +373,7 @@ const SCRIPT = THEME_TOGGLE_JS + `
   showLens(initialLens);
 
   // Generic master/detail wiring for clickable list items -> panels.
-  function wireList(itemSelector, panelSelector, itemKey, panelKey) {
+  function wireList(itemSelector, panelSelector, itemKey, panelKey, onActivate) {
     var items = Array.prototype.slice.call(document.querySelectorAll(itemSelector));
     var panels = Array.prototype.slice.call(document.querySelectorAll(panelSelector));
     function select(key) {
@@ -371,7 +382,11 @@ const SCRIPT = THEME_TOGGLE_JS + `
         item.classList.toggle('selected', on);
         item.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
-      panels.forEach(function (panel) { panel.classList.toggle('active', panel.dataset[panelKey] === key); });
+      panels.forEach(function (panel) {
+        var on = panel.dataset[panelKey] === key;
+        if (on && onActivate && !panel.classList.contains('active')) onActivate(panel);
+        panel.classList.toggle('active', on);
+      });
     }
     items.forEach(function (item, i) {
       item.style.setProperty('--i', i);
@@ -383,9 +398,32 @@ const SCRIPT = THEME_TOGGLE_JS + `
     if (items.length > 0) select(items[0].dataset[itemKey]);
     return { items: items, select: select };
   }
-  var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel');
+  // A turn panel's file filter: show one file's edits, or all of them ('').
+  function filterPanelFiles(panel, file) {
+    Array.prototype.forEach.call(panel.querySelectorAll('.file-filter-btn'), function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.fileFilter === file));
+    });
+    Array.prototype.forEach.call(panel.querySelectorAll('.edit'), function (edit) {
+      edit.classList.toggle('file-hidden', !!file && edit.dataset.file !== file);
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn'), function (btn) {
+    btn.addEventListener('click', function () { filterPanelFiles(btn.closest('.turn-panel'), btn.dataset.fileFilter); });
+  });
+  // Hiding outside-project files must not leave a panel filtered to one of them.
+  var scopeToggle = document.querySelector('.opt-toggle[data-opt="scope"]');
+  if (scopeToggle) {
+    scopeToggle.addEventListener('click', function () {
+      if (root.classList.contains('show-outside')) return;
+      Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn[data-outside="1"][aria-pressed="true"]'), function (btn) {
+        filterPanelFiles(btn.closest('.turn-panel'), '');
+      });
+    });
+  }
+  // Every time a turn is opened it starts on all of its changes.
+  var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, ''); });
 
-  // A file chip under a review step jumps to that file's diff in the turn's panel.
+  // A file chip under a review step opens the turn's panel filtered to that file.
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Scroll an edit block into view and flash it (file chips and the Trace lens).
   function revealEdit(target) {
@@ -410,6 +448,8 @@ const SCRIPT = THEME_TOGGLE_JS + `
         if (!target && edit.dataset.file === chip.dataset.file) target = edit;
       });
       if (!target) return;
+      // A single-file turn has no filter bar, and needs none.
+      if (panel.querySelector('.file-filter')) filterPanelFiles(panel, chip.dataset.file);
       revealEdit(target);
     });
   });

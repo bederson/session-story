@@ -83,6 +83,7 @@ test('libraryEntry carries the metadata the index and switcher need', () => {
   assert.equal(entry.duration_ms, 1800000);
   assert.deepEqual(entry.totals, { turns: 1, files: 2, added: 30, removed: 4, edits: 3 });
   assert.equal(entry.outcome, 'completed');
+  assert.deepEqual(entry.usage, { input_tokens: null, output_tokens: null, cost_usd: null });
   assert.deepEqual(entry.chain, ['eb076ea5-5cf4-4dfa-9afd-44894bf556a6']);
   assert.ok(entry.generated_at, 'stamped with a generation time');
 });
@@ -107,6 +108,19 @@ test('upsertEntry sorts newest first', () => {
   const older = { id: 's1', started_at: '2026-09-10T00:00:00.000Z' };
   const newer = { id: 's2', started_at: '2026-09-12T00:00:00.000Z' };
   assert.deepEqual(upsertEntry([older], newer).map((e) => e.id), ['s2', 's1']);
+});
+
+test('upsertEntry puts the most recently active session first, by when it ended', () => {
+  // A session joined across /clear starts early but ends last; it belongs on top.
+  const chained = { id: 's1', started_at: '2026-10-08T07:41:00.000Z', ended_at: '2026-10-08T12:55:00.000Z' };
+  const later = { id: 's2', started_at: '2026-10-08T09:00:00.000Z', ended_at: '2026-10-08T09:40:00.000Z' };
+  assert.deepEqual(upsertEntry([chained], later).map((e) => e.id), ['s1', 's2']);
+});
+
+test('upsertEntry falls back to the start time for an entry without an end time', () => {
+  const noEnd = { id: 's1', started_at: '2026-10-08T11:00:00.000Z', ended_at: null };
+  const ended = { id: 's2', started_at: '2026-10-08T09:00:00.000Z', ended_at: '2026-10-08T10:00:00.000Z' };
+  assert.deepEqual(upsertEntry([ended], noEnd).map((e) => e.id), ['s1', 's2']);
 });
 
 test('upsertEntry does not mutate the array it is given', () => {
@@ -163,4 +177,45 @@ test('renderIndexPage handles an empty library', () => {
 test('renderIndexPage shows each session start and end date and time', () => {
   const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
   assert.match(html, /2026-09-14 10:32 → 11:02 UTC/);
+});
+
+test('libraryEntry records token usage and cost from the story metrics', () => {
+  const story = sampleStory();
+  story.metrics = { usage: { input_tokens: 100, cache_read_tokens: 900, cache_creation_tokens: 0, output_tokens: 50, total_cost_usd: 1.5 } };
+  assert.deepEqual(libraryEntry(story, { file: 'x.html' }).usage, { input_tokens: 1000, output_tokens: 50, cost_usd: 1.5 });
+});
+
+test('renderIndexPage shows usage on each card and in the rollup, and notes partial cost', () => {
+  const withUsage = libraryEntry(sampleStory(), { file: 'a.html' });
+  withUsage.usage = { input_tokens: 178717, output_tokens: 860, cost_usd: 4.2226 };
+  const older = libraryEntry(sampleStory({ session: { ...sampleStory().session, id: 's2' } }), { file: 'b.html' });
+  delete older.usage; // a manifest entry written before usage was recorded
+  const html = renderIndexPage([withUsage, older], { cwd: '/proj' });
+
+  assert.match(html, /178\.7k in · 860 out/);
+  assert.match(html, /data-input="178717" data-output="860" data-cost="4\.2226"/);
+  assert.match(html, /data-input="" data-output="" data-cost=""/);
+  assert.match(html, /data-roll="cost">\$4\.22</);
+  assert.match(html, /data-roll-part="cost-note">/); // shown: cost known for 1 of 2
+  assert.match(html, /for 1 of 2/);
+});
+
+test('renderIndexPage hides usage rollup parts when no session recorded usage', () => {
+  const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
+  assert.match(html, /data-roll-part="input" hidden/);
+  assert.match(html, /data-roll-part="cost" hidden/);
+});
+
+test('renderIndexPage offers time period filters, hidden until the script runs, defaulting to all time', () => {
+  const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
+  assert.match(html, /class="lib-periods" role="group" aria-label="Time period" hidden/);
+  for (const key of ['today', '7d', '30d', 'month', 'last-month', 'all']) {
+    assert.match(html, new RegExp(`data-period="${key}"`));
+  }
+  assert.match(html, /data-period="all" aria-pressed="true">All time</);
+  assert.match(html, /data-started="2026-09-14T10:32:00\.000Z"/);
+});
+
+test('renderIndexPage renders no period filter for an empty library', () => {
+  assert.doesNotMatch(renderIndexPage([], { cwd: '/proj' }), /lib-periods" role/);
 });

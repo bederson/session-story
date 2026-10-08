@@ -12,7 +12,9 @@
  */
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { storyTitle, formatDuration, formatRange, plural, OUTCOME_LABELS } from './lenses.mjs';
+import {
+  storyTitle, formatDuration, formatRange, plural, OUTCOME_LABELS, formatTokens, formatCost, usageTotals,
+} from './lenses.mjs';
 import {
   TOKENS_CSS,
   BASE_CSS,
@@ -76,15 +78,24 @@ export function libraryEntry(story, { file }) {
     ended_at: session.ended_at || null,
     duration_ms: session.duration_ms || 0,
     totals: totals || { turns: 0, files: 0, added: 0, removed: 0, edits: 0 },
+    usage: usageTotals(story),
     outcome: (story.report && story.report.outcome) || null,
     generated_at: new Date().toISOString(),
   };
 }
 
-/** Add or replace `entry` by session id, newest session first. */
+/**
+ * When a session was last active: its end, or its start when no end was
+ * recorded. A session joined across /clear starts early but ends late.
+ */
+function lastActive(entry) {
+  return String(entry.ended_at || entry.started_at || '');
+}
+
+/** Add or replace `entry` by session id, most recently active session first. */
 export function upsertEntry(entries, entry) {
   return [...entries.filter((e) => e.id !== entry.id), entry]
-    .sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
+    .sort((a, b) => lastActive(b).localeCompare(lastActive(a)));
 }
 
 /**
@@ -111,6 +122,7 @@ ${BASE_CSS}
 ${OUTCOME_CSS}
 ${THEME_TOGGLE_CSS}
 body { padding-bottom: 64px; }
+[hidden] { display: none !important; } /* cards and bars set display, which would beat the attribute */
 .lib-header { background: var(--surface); border-bottom: 1px solid var(--border); }
 .lib-header-inner { max-width: 1100px; margin: 0 auto; padding: 34px var(--gutter) 26px; display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; justify-content: space-between; }
 .lib-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 10px; }
@@ -140,27 +152,123 @@ body { padding-bottom: 64px; }
 .lib-empty { padding: 40px 0; color: var(--text-2); }
 .lib-empty code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); border-radius: 4px; padding: 2px 6px; }
 .no-matches { padding: 30px 0; color: var(--text-3); }
-@media print { .lib-tools, .theme-toggle { display: none; } }
+.lib-periods { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.lib-period { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.lib-period:hover { color: var(--text); border-color: var(--border-strong); }
+.lib-period[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.lib-count .roll-note { color: var(--text-3); }
+@media print { .lib-tools, .lib-periods, .theme-toggle { display: none; } }
 `;
 
 const INDEX_SCRIPT = THEME_TOGGLE_JS + `
 (function () {
-  // Filtering is a substring match over each card's own text, so the index
-  // needs no data beyond what it already rendered.
+  // Filtering is a substring match over each card's own text plus a time
+  // period over its start time, so the index needs no data beyond what it
+  // already rendered. The rollup line is recomputed from the shown cards.
   var input = document.querySelector('.lib-search input');
+  var periodBar = document.querySelector('.lib-periods');
   var cards = Array.prototype.slice.call(document.querySelectorAll('.session-card'));
   var empty = document.querySelector('.no-matches');
-  if (!input) return;
-  input.addEventListener('input', function () {
-    var q = input.value.trim().toLowerCase();
-    var shown = 0;
+  var count = document.querySelector('.lib-count');
+  if (!cards.length) return;
+  var PERIOD_KEY = 'session-story-period';
+  var period = 'all';
+  try { period = localStorage.getItem(PERIOD_KEY) || 'all'; } catch (e) {}
+  if (periodBar && !periodBar.querySelector('[data-period="' + period + '"]')) period = 'all';
+
+  // The [from, to) window of a period in the viewer's local time; null for all time.
+  function windowOf(key) {
+    var now = new Date();
+    var y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+    switch (key) {
+      case 'today': return [new Date(y, m, d), null];
+      case '7d': return [new Date(y, m, d - 6), null];
+      case '30d': return [new Date(y, m, d - 29), null];
+      case 'month': return [new Date(y, m, 1), null];
+      case 'last-month': return [new Date(y, m - 1, 1), new Date(y, m, 1)];
+      default: return null;
+    }
+  }
+  function inPeriod(card, win) {
+    if (!win) return true;
+    var t = Date.parse(card.dataset.started || '');
+    if (isNaN(t)) return false;
+    return t >= win[0].getTime() && (!win[1] || t < win[1].getTime());
+  }
+  function num(card, key) {
+    var v = card.dataset[key];
+    return v === undefined || v === '' ? null : Number(v);
+  }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  // Same output as formatTokens and formatCost in src/render/lenses.mjs.
+  function fmtTokens(n) {
+    if (n < 1000) return String(n);
+    if (n < 1e6) return (n / 1000).toFixed(1) + 'k';
+    return (n / 1e6).toFixed(1) + 'M';
+  }
+  function fmtCost(usd) { return usd < 0.01 ? '<$0.01' : '$' + usd.toFixed(2); }
+  function setRoll(key, text) {
+    var el = count && count.querySelector('[data-roll="' + key + '"]');
+    if (el) el.textContent = text;
+  }
+  function showPart(key, on) {
+    var el = count && count.querySelector('[data-roll-part="' + key + '"]');
+    if (el) el.hidden = !on;
+  }
+
+  function apply() {
+    var q = input ? input.value.trim().toLowerCase() : '';
+    var win = windowOf(period);
+    var shown = [];
     cards.forEach(function (card) {
-      var hit = !q || card.dataset.search.indexOf(q) !== -1;
+      var hit = (!q || card.dataset.search.indexOf(q) !== -1) && inPeriod(card, win);
       card.hidden = !hit;
-      if (hit) shown++;
+      if (hit) shown.push(card);
     });
-    if (empty) empty.hidden = shown > 0;
-  });
+    if (empty) empty.hidden = shown.length > 0;
+    if (!count) return;
+    var sum = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
+    var known = { input: 0, output: 0, cost: 0 };
+    shown.forEach(function (card) {
+      ['turns', 'added', 'removed', 'input', 'output', 'cost'].forEach(function (key) {
+        var v = num(card, key);
+        if (v === null) return;
+        sum[key] += v;
+        if (key in known) known[key]++;
+      });
+    });
+    setRoll('sessions', plural(shown.length, 'session'));
+    setRoll('turns', plural(sum.turns, 'turn'));
+    setRoll('added', '+' + sum.added);
+    setRoll('removed', '−' + sum.removed);
+    setRoll('input', fmtTokens(sum.input));
+    setRoll('output', fmtTokens(sum.output));
+    setRoll('cost', fmtCost(sum.cost));
+    setRoll('cost-note', 'for ' + known.cost + ' of ' + shown.length);
+    showPart('input', known.input > 0);
+    showPart('output', known.output > 0);
+    showPart('cost', known.cost > 0);
+    showPart('cost-note', known.cost > 0 && known.cost < shown.length);
+  }
+
+  if (periodBar) {
+    periodBar.hidden = false;
+    var buttons = Array.prototype.slice.call(periodBar.querySelectorAll('.lib-period'));
+    function press() {
+      buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.period === period)); });
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        period = b.dataset.period;
+        try { localStorage.setItem(PERIOD_KEY, period); } catch (e) {}
+        press();
+        apply();
+      });
+    });
+    press();
+  }
+  if (input) input.addEventListener('input', apply);
+  apply();
 })();
 `;
 
@@ -169,14 +277,54 @@ function outcomePill(outcome) {
   return `<span class="outcome-pill outcome-${escapeHtml(outcome)}">${OUTCOME_LABELS[outcome] || escapeHtml(outcome)}</span>`;
 }
 
+const PERIODS = [
+  ['today', 'Today'],
+  ['7d', 'Last 7 days'],
+  ['30d', 'Last 30 days'],
+  ['month', 'This month'],
+  ['last-month', 'Last month'],
+  ['all', 'All time'],
+];
+
+/** Hidden until the page script runs: without it the buttons would do nothing. */
+function periodFilter() {
+  const buttons = PERIODS.map(([key, label]) =>
+    `<button type="button" class="lib-period" data-period="${key}" aria-pressed="${key === 'all'}">${label}</button>`
+  ).join('');
+  return `<div class="lib-periods" role="group" aria-label="Time period" hidden>${buttons}</div>`;
+}
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/** An entry's usage; manifests written before usage was recorded have none. */
+function usageOf(entry) {
+  const u = entry.usage || {};
+  return {
+    input_tokens: isNum(u.input_tokens) ? u.input_tokens : null,
+    output_tokens: isNum(u.output_tokens) ? u.output_tokens : null,
+    cost_usd: isNum(u.cost_usd) ? u.cost_usd : null,
+  };
+}
+
+const dataNum = (v) => (isNum(v) ? String(v) : '');
+
 function sessionCard(entry) {
   const totals = entry.totals || {};
+  const usage = usageOf(entry);
+  const tokens = [
+    usage.input_tokens !== null ? `${formatTokens(usage.input_tokens)} in` : '',
+    usage.output_tokens !== null ? `${formatTokens(usage.output_tokens)} out` : '',
+  ].filter(Boolean).join(' · ');
   const chain = (entry.chain || []).length;
   const search = [entry.title, entry.summary, entry.started_at, entry.outcome]
     .filter(Boolean).join(' ').toLowerCase();
 
   return (
-    `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}">` +
+    `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}"` +
+    ` data-started="${escapeHtml(entry.started_at || '')}" data-turns="${totals.turns || 0}"` +
+    ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
+    ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
+    ` data-cost="${dataNum(usage.cost_usd)}">` +
     `<span class="card-top">` +
     `<span class="card-date">${icon('clock')}<span>${escapeHtml(formatRange(entry.started_at, entry.ended_at))}</span></span>` +
     outcomePill(entry.outcome) +
@@ -189,6 +337,8 @@ function sessionCard(entry) {
     `<span class="add">+${totals.added || 0}</span>` +
     `<span class="del">${MINUS}${totals.removed || 0}</span>` +
     (entry.duration_ms ? `<span>${icon('clock')}${escapeHtml(formatDuration(entry.duration_ms))}</span>` : '') +
+    (tokens ? `<span title="Tokens, input incl. cache">${icon('sparkle')}${tokens}</span>` : '') +
+    (usage.cost_usd !== null ? `<span>${icon('cost')}${formatCost(usage.cost_usd)}</span>` : '') +
     (chain > 1 ? `<span class="card-chain">${icon('branch')}${chain} joined</span>` : '') +
     `</span>` +
     `</a>`
@@ -202,23 +352,41 @@ function sessionCard(entry) {
  */
 export function renderIndexPage(entries, { cwd = '' } = {}) {
   const project = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : 'Session stories';
-  const rollup = entries.reduce(
-    (acc, e) => {
-      const t = e.totals || {};
-      acc.turns += t.turns || 0;
-      acc.added += t.added || 0;
-      acc.removed += t.removed || 0;
-      return acc;
-    },
-    { turns: 0, added: 0, removed: 0 }
-  );
+  const rollup = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
+  const known = { input: 0, output: 0, cost: 0 };
+  for (const entry of entries) {
+    const t = entry.totals || {};
+    const u = usageOf(entry);
+    rollup.turns += t.turns || 0;
+    rollup.added += t.added || 0;
+    rollup.removed += t.removed || 0;
+    for (const [key, v] of [['input', u.input_tokens], ['output', u.output_tokens], ['cost', u.cost_usd]]) {
+      if (v === null) continue;
+      rollup[key] += v;
+      known[key]++;
+    }
+  }
+  // Every part carries a data-roll key so the page script can recompute it
+  // for the sessions a filter leaves; usage parts hide when nothing shown has them.
+  const part = (key, on, html) => `<span data-roll-part="${key}"${on ? '' : ' hidden'}>${html}</span>`;
+  const count =
+    `<p class="lib-count">` +
+    `<span data-roll="sessions">${entries.length} ${plural(entries.length, 'session')}</span> · ` +
+    `<span data-roll="turns">${rollup.turns} ${plural(rollup.turns, 'turn')}</span> · ` +
+    `<span class="add" data-roll="added">+${rollup.added}</span> ` +
+    `<span class="del" data-roll="removed">${MINUS}${rollup.removed}</span>` +
+    part('input', known.input > 0, ` · <span data-roll="input">${formatTokens(rollup.input)}</span> in`) +
+    part('output', known.output > 0, ` · <span data-roll="output">${formatTokens(rollup.output)}</span> out`) +
+    part('cost', known.cost > 0, ` · <span data-roll="cost">${formatCost(rollup.cost)}</span>`) +
+    part('cost-note', known.cost > 0 && known.cost < entries.length,
+      ` <span class="roll-note">(cost <span data-roll="cost-note">for ${known.cost} of ${entries.length}</span>)</span>`) +
+    `</p>`;
 
   const body = entries.length
-    ? `<p class="lib-count">${entries.length} ${plural(entries.length, 'session')} · ` +
-      `${rollup.turns} ${plural(rollup.turns, 'turn')} · ` +
-      `<span class="add">+${rollup.added}</span> <span class="del">${MINUS}${rollup.removed}</span></p>` +
+    ? periodFilter() +
+      count +
       `<div class="session-list">${entries.map(sessionCard).join('')}</div>` +
-      `<p class="no-matches" hidden>No sessions match that search.</p>`
+      `<p class="no-matches" hidden>No sessions match these filters.</p>`
     : `<p class="lib-empty">No sessions yet. Run <code>story render</code> and this page will list it.</p>`;
 
   return (

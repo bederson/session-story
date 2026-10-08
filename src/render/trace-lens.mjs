@@ -10,7 +10,7 @@
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { statTile, plural } from './lenses.mjs';
+import { statTile, plural, dual, formatTokens, formatCost, inputWithCache } from './lenses.mjs';
 import { msBetween } from '../ir/trace.mjs';
 
 const USAGE_SOURCE_LABEL = {
@@ -45,17 +45,8 @@ export function formatLatency(ms) {
   return h > 0 ? `${h}h ${m}m` : `${m}m ${total % 60}s`;
 }
 
-export function formatTokens(n) {
-  if (!isNum(n)) return null;
-  if (n < 1000) return String(n);
-  if (n < 1e6) return `${(n / 1000).toFixed(1)}k`;
-  return `${(n / 1e6).toFixed(1)}M`;
-}
-
-export function formatCost(usd) {
-  if (!isNum(usd)) return null;
-  return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
-}
+// Shared with the header and the library page.
+export { formatTokens, formatCost };
 
 function na(reason) {
   return `<span class="trace-na">not recorded</span>` + (reason ? ` <span class="trace-note">${reason}</span>` : '');
@@ -65,14 +56,20 @@ function num(v) {
   return isNum(v) ? String(v) : na();
 }
 
-function row(label, valueHtml) {
-  return `<dt>${label}</dt><dd>${valueHtml}</dd>`;
+/**
+ * A code count in both scopes, like the header: the page shows the
+ * project-only value unless "Project files only" is switched off.
+ * Stories whose metrics predate `in_project` show the one total.
+ */
+function scoped(c, key, format) {
+  const all = c[key];
+  const inside = c.in_project ? c.in_project[key] : undefined;
+  if (!isNum(all)) return format(all);
+  return isNum(inside) ? dual(format(inside), format(all)) : format(all);
 }
 
-/** Input tokens including cache reads and writes, or null if any part is unknown. */
-function inputWithCache(u) {
-  const parts = [u.input_tokens, u.cache_read_tokens, u.cache_creation_tokens];
-  return parts.every(isNum) ? parts.reduce((a, b) => a + b, 0) : null;
+function row(label, valueHtml) {
+  return `<dt>${label}</dt><dd>${valueHtml}</dd>`;
 }
 
 export function renderScorecard(metrics) {
@@ -87,7 +84,7 @@ export function renderScorecard(metrics) {
   if (isNum(x.turns)) tiles.push(statTile('turns', x.turns, plural(x.turns, 'turn')));
   if (isNum(x.tool_calls)) tiles.push(statTile('terminal', x.tool_calls, plural(x.tool_calls, 'tool call')));
   if (isNum(x.failed_tool_calls)) tiles.push(statTile('cross', x.failed_tool_calls, 'failed', x.failed_tool_calls > 0 ? 'removed' : ''));
-  if (isNum(c.files_changed)) tiles.push(statTile('files', c.files_changed, `${plural(c.files_changed, 'file')} changed`));
+  if (isNum(c.files_changed)) tiles.push(statTile('files', scoped(c, 'files_changed', String), `${plural(c.files_changed, 'file')} changed`));
   if (isNum(v.commands) && v.commands > 0) {
     const cls = v.final_state === 'passed' ? 'added' : v.final_state === 'failed' ? 'removed' : '';
     tiles.push(statTile('check', `${v.passed}/${v.commands}`, `validation, last ${escapeHtml(v.final_state)}`, cls));
@@ -127,12 +124,12 @@ export function renderMetrics(story) {
       row('Retries', num(x.retries)),
     ]),
     group('Code', [
-      row('Files changed', num(c.files_changed)),
-      row('Lines added', num(c.lines_added)),
-      row('Lines removed', num(c.lines_removed)),
-      row('Edits', num(c.edits)),
+      row('Files changed', scoped(c, 'files_changed', num)),
+      row('Lines added', scoped(c, 'lines_added', num)),
+      row('Lines removed', scoped(c, 'lines_removed', num)),
+      row('Edits', scoped(c, 'edits', num)),
       row('Edited more than once', repeated.length
-        ? `<ul class="trace-list">${repeated.map((f) => `<li><code>${escapeHtml(f.rel)}</code> ×${f.edits}</li>`).join('')}</ul>`
+        ? `<ul class="trace-list">${repeated.map((f) => `<li${f.outside_cwd ? ' data-outside="1"' : ''}><code>${escapeHtml(f.rel)}</code> ×${f.edits}</li>`).join('')}</ul>`
         : 'none'),
     ]),
     group('Validation', [
@@ -398,7 +395,7 @@ html.js #lens-trace.failures-only .trace-event:not(.trace-prompt):not([data-grou
 `;
 /**
  * Runs inside the page script's IIFE (src/render/template.mjs), which
- * provides root, showLens, turns, reduceMotion and revealEdit.
+ * provides root, showLens, turns, reduceMotion, revealEdit and filterPanelFiles.
  */
 export const TRACE_SCRIPT = `
   var traceLens = document.getElementById('lens-trace');
@@ -438,6 +435,8 @@ export const TRACE_SCRIPT = `
         });
       }
       if (!target) return;
+      // The panel may be narrowed to another file.
+      if (target.classList.contains('file-hidden')) filterPanelFiles(panel, '');
       // An edit outside the project is hidden while "Project files only" is on.
       if (target.getAttribute('data-outside') === '1' && !root.classList.contains('show-outside')) {
         var scope = document.querySelector('.opt-toggle[data-opt="scope"]');
