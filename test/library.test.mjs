@@ -176,7 +176,7 @@ test('renderIndexPage handles an empty library', () => {
 
 test('renderIndexPage shows each session start and end date and time', () => {
   const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
-  assert.match(html, /2026-09-14 10:32 → 11:02 UTC/);
+  assert.match(html, /<time datetime="2026-09-14T11:02:00\.000Z">2026-09-14 11:02 UTC<\/time>/);
 });
 
 test('libraryEntry records token usage and cost from the story metrics', () => {

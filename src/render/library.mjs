@@ -13,7 +13,7 @@
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import {
-  storyTitle, formatDuration, formatRange, plural, OUTCOME_LABELS, formatTokens, formatCost, usageTotals,
+  storyTitle, formatDuration, formatDate, plural, OUTCOME_LABELS, formatTokens, formatCost, usageTotals,
 } from './lenses.mjs';
 import {
   TOKENS_CSS,
@@ -172,6 +172,15 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   var empty = document.querySelector('.no-matches');
   var count = document.querySelector('.lib-count');
   if (!cards.length) return;
+
+  // Cards are rendered in UTC; show each last-active time in the viewer's own zone.
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  Array.prototype.slice.call(document.querySelectorAll('.card-date time[datetime]')).forEach(function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d.getTime())) return;
+    el.textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  });
   var PERIOD_KEY = 'session-story-period';
   var period = 'all';
   try { period = localStorage.getItem(PERIOD_KEY) || 'all'; } catch (e) {}
@@ -327,7 +336,7 @@ function sessionCard(entry) {
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
     ` data-cost="${dataNum(usage.cost_usd)}">` +
     `<span class="card-top">` +
-    `<span class="card-date">${icon('clock')}<span>${escapeHtml(formatRange(entry.started_at, entry.ended_at))}</span></span>` +
+    `<span class="card-date" title="Last active">${icon('clock')}<time datetime="${escapeHtml(lastActive(entry))}">${escapeHtml(formatDate(lastActive(entry)))}</time></span>` +
     outcomePill(entry.outcome) +
     `</span>` +
     `<h2>${escapeHtml(entry.title || 'Session story')}</h2>` +
