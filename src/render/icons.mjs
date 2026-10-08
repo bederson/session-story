@@ -35,6 +35,9 @@ const ICONS = {
   decision: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.2 1.3"/>',
   search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>',
   back: '<path d="M13 8H3"/><path d="M6.5 4.5L3 8l3.5 3.5"/>',
+  trace: '<path d="M2.5 3.5h3M2.5 8h6M2.5 12.5h4.5"/><circle cx="8" cy="3.5" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="9.5" cy="12.5" r="1.3"/>',
+  retry: '<path d="M13 8a5 5 0 1 1-1.5-3.55"/><path d="M13 2.5v3h-3"/>',
+  cost: '<circle cx="8" cy="8" r="6"/><path d="M10 5.8c-.4-.6-1.1-.9-2-.9-1.2 0-2 .6-2 1.5 0 2 4 1 4 3.1 0 .9-.9 1.6-2.1 1.6-.9 0-1.7-.4-2.1-1M8 3.6v1.3M8 11.1v1.3"/>',
 };
 
 export const ICON_NAMES = Object.keys(ICONS);

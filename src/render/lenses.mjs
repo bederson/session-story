@@ -194,7 +194,7 @@ function renderMotif() {
   );
 }
 
-function statTile(name, value, label, extraClass = '') {
+export function statTile(name, value, label, extraClass = '') {
   return (
     `<div class="stat-tile${extraClass ? ` ${extraClass}` : ''}">` +
     `<span class="stat-icon">${icon(name)}</span>` +
