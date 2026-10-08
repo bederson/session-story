@@ -108,6 +108,8 @@ html.full-context #lens-review .view-hunks, html.full-context #lens-diff .view-h
 html.js .lens-section:not(.active) { display: none; }
 html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border); }
 .panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
+.turn-time { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
+.panel-head .turn-time { display: inline; margin: 0; }
 .panel-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
 .panel-title .icon { color: var(--accent-ink); }
 .panel-meta { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; font-size: 12px; color: var(--text-3); }
@@ -453,7 +455,7 @@ const LIBRARY_SCRIPT = `
   sessions.forEach(function (s) {
     var option = document.createElement('option');
     option.value = s.file;
-    option.textContent = (s.started_at ? s.started_at.slice(0, 10) + '  ' : '') + (s.title || s.id);
+    option.textContent = (s.started_at ? s.started_at.slice(0, 16).replace('T', ' ') + '  ' : '') + (s.title || s.id);
     if (s.id === current) option.selected = true;
     select.appendChild(option);
   });

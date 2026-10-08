@@ -12,7 +12,7 @@
  */
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { storyTitle, formatDuration, formatDate, plural, OUTCOME_LABELS } from './lenses.mjs';
+import { storyTitle, formatDuration, formatRange, plural, OUTCOME_LABELS } from './lenses.mjs';
 import {
   TOKENS_CSS,
   BASE_CSS,
@@ -178,7 +178,7 @@ function sessionCard(entry) {
   return (
     `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}">` +
     `<span class="card-top">` +
-    `<span class="card-date">${icon('clock')}<span>${escapeHtml(formatDate(entry.started_at))}</span></span>` +
+    `<span class="card-date">${icon('clock')}<span>${escapeHtml(formatRange(entry.started_at, entry.ended_at))}</span></span>` +
     outcomePill(entry.outcome) +
     `</span>` +
     `<h2>${escapeHtml(entry.title || 'Session story')}</h2>` +

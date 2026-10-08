@@ -159,3 +159,8 @@ test('renderIndexPage handles an empty library', () => {
   assert.match(html, /<!doctype html>/i);
   assert.doesNotMatch(html, /class="session-card"/);
 });
+
+test('renderIndexPage shows each session start and end date and time', () => {
+  const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
+  assert.match(html, /2026-09-14 10:32 → 11:02 UTC/);
+});

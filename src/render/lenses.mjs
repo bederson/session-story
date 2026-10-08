@@ -68,6 +68,18 @@ export function formatDate(iso) {
   return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 }
 
+/**
+ * When a session ran, start to end: "2026-09-10 10:00 → 10:05 UTC". The end
+ * repeats the date only when the session crossed midnight.
+ */
+export function formatRange(startIso, endIso) {
+  const start = formatDate(startIso);
+  const end = formatDate(endIso);
+  if (!start || !end || end === start) return start;
+  const endShown = end.slice(0, 10) === start.slice(0, 10) ? end.slice(11) : end;
+  return `${start.slice(0, -4)} → ${endShown}`;
+}
+
 export function plural(n, word) {
   return `${word}${n === 1 ? '' : 's'}`;
 }
@@ -198,7 +210,7 @@ export function renderHeader(story) {
   const blindSpots = (session.blind_spots || [])
     .map((b) => `<li>${icon('warning')}<span>${escapeHtml(b)}</span></li>`)
     .join('');
-  const started = formatDate(session.started_at);
+  const started = formatRange(session.started_at, session.ended_at);
 
   const outcome = report && report.outcome;
   const outcomePill = outcome
@@ -271,6 +283,11 @@ function renderFileChips(story, edits) {
     .join('');
 }
 
+function turnTime(turn) {
+  const shown = formatDate(turn.at);
+  return shown ? `<time class="turn-time" datetime="${escapeHtml(turn.at)}">${shown}</time>` : '';
+}
+
 function panelMeta(turn) {
   const describe = (edits) => {
     const { added, removed } = statsOf(edits);
@@ -304,6 +321,7 @@ export function renderReviewLens(story) {
         `<li class="timeline-item" data-turn="${turn.index}" tabindex="0" role="button" aria-pressed="false">` +
         `<div class="turn-index">${turn.index}</div>` +
         `<div class="turn-body">` +
+        turnTime(turn) +
         `<blockquote class="turn-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         summaryHtml +
         renderActivityBar(turn, max) +
@@ -329,7 +347,7 @@ export function renderReviewLens(story) {
         : '';
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
-        `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${panelMeta(turn)}</div>` +
+        `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
         filteredNote +
         editsHtml +
         `</section>`

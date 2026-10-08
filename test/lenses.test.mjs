@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderHeader } from '../src/render/lenses.mjs';
+import { renderHeader, formatRange } from '../src/render/lenses.mjs';
 
 function sampleStory(overrides = {}) {
   return {
@@ -363,4 +363,43 @@ test('a Claude-written title still wins over ai_title', () => {
   const html = renderHeader(story);
 
   assert.match(html, /<h1>Panel title\/subtitle<\/h1>/);
+});
+
+test('formatRange shows the start and end time, with the date once when both fall on the same day', () => {
+  assert.equal(
+    formatRange('2026-09-10T10:00:00.000Z', '2026-09-10T10:05:30.000Z'),
+    '2026-09-10 10:00 → 10:05 UTC'
+  );
+});
+
+test('formatRange repeats the date when the session crosses midnight', () => {
+  assert.equal(
+    formatRange('2026-09-10T23:50:00.000Z', '2026-09-11T00:20:00.000Z'),
+    '2026-09-10 23:50 → 2026-09-11 00:20 UTC'
+  );
+});
+
+test('formatRange falls back to the start alone without a usable end', () => {
+  assert.equal(formatRange('2026-09-10T10:00:00.000Z', null), '2026-09-10 10:00 UTC');
+  assert.equal(formatRange('2026-09-10T10:00:00.000Z', 'nope'), '2026-09-10 10:00 UTC');
+  assert.equal(formatRange(null, null), '');
+});
+
+test('renderHeader shows when the session started and ended', () => {
+  const html = renderHeader(sampleStory());
+  assert.match(html, /2026-09-10 10:00 → 10:05 UTC/);
+});
+
+test('renderReviewLens stamps each timeline item and turn panel with when the prompt was sent', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const html = renderReviewLens(sampleStory());
+  assert.match(html, /<time class="turn-time" datetime="2026-09-10T10:00:00\.000Z">2026-09-10 10:00 UTC<\/time>/);
+  assert.equal(html.match(/class="turn-time"/g).length, 2);
+});
+
+test('renderReviewLens omits the timestamp for a turn without one', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory();
+  story.turns[0].at = null;
+  assert.doesNotMatch(renderReviewLens(story), /turn-time/);
 });
