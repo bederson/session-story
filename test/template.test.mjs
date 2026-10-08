@@ -139,3 +139,13 @@ test('the page references nothing over the network', () => {
   assert.doesNotMatch(html, /(src|href)="(https?:)?\/\//);
   assert.doesNotMatch(html, /@import|url\(http/);
 });
+
+test('the page script wires trace filters, failures-only and jumps to a Review edit', () => {
+  const html = renderPage(Object.assign(sampleStory(), { trace: { events: [] } }));
+  const script = html.slice(html.lastIndexOf('<script>'));
+  assert.match(script, /getElementById\('lens-trace'\)/);
+  assert.match(script, /setAttribute\('data-filter'/);
+  assert.match(script, /classList\.toggle\('failures-only'\)/);
+  assert.match(script, /dataset\.editId === editId/);
+  assert.match(script, /function revealEdit\(target\)/);
+});

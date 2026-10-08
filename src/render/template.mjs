@@ -2,7 +2,7 @@ import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle } from './lenses.mjs';
 import { renderReportLens } from './report.mjs';
-import { renderTraceLens, hasTrace, TRACE_CSS } from './trace-lens.mjs';
+import { renderTraceLens, hasTrace, TRACE_CSS, TRACE_SCRIPT } from './trace-lens.mjs';
 import { resetFullViewBudget } from './full-view.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
 
@@ -387,6 +387,13 @@ const SCRIPT = THEME_TOGGLE_JS + `
 
   // A file chip under a review step jumps to that file's diff in the turn's panel.
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Scroll an edit block into view and flash it (file chips and the Trace lens).
+  function revealEdit(target) {
+    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    target.classList.remove('flash');
+    void target.offsetWidth; // restart the animation when the same edit is revealed twice
+    target.classList.add('flash');
+  }
   Array.prototype.forEach.call(document.querySelectorAll('.turn-chips .chip'), function (chip) {
     chip.addEventListener('click', function () {
       // Select the turn first: inactive panels are display:none, so the target
@@ -403,13 +410,11 @@ const SCRIPT = THEME_TOGGLE_JS + `
         if (!target && edit.dataset.file === chip.dataset.file) target = edit;
       });
       if (!target) return;
-      target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-      target.classList.remove('flash');
-      void target.offsetWidth; // restart the animation when the same chip is clicked twice
-      target.classList.add('flash');
+      revealEdit(target);
     });
   });
   wireList('.file-tree-item', '.file-panel', 'file', 'filePanel');
+${TRACE_SCRIPT}
   Array.prototype.forEach.call(document.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
 
   // j / k move between turns in the review lens.

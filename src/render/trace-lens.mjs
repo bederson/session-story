@@ -396,3 +396,55 @@ ${FILTER_CSS}
 html.js #lens-trace.failures-only .trace-event:not(.trace-prompt):not([data-groups~="failure"]) { display: none; }
 @media print { .trace-filters, .trace-jump { display: none !important; } .trace-metrics { position: static; } }
 `;
+/**
+ * Runs inside the page script's IIFE (src/render/template.mjs), which
+ * provides root, showLens, turns, reduceMotion and revealEdit.
+ */
+export const TRACE_SCRIPT = `
+  var traceLens = document.getElementById('lens-trace');
+  if (traceLens) {
+    var traceFilters = Array.prototype.slice.call(traceLens.querySelectorAll('[data-trace-filter]'));
+    var setTraceFilter = function (name) {
+      traceLens.setAttribute('data-filter', name);
+      traceFilters.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.traceFilter === name)); });
+    };
+    traceFilters.forEach(function (b) {
+      b.addEventListener('click', function () { setTraceFilter(b.dataset.traceFilter); });
+    });
+    var failuresButton = traceLens.querySelector('.trace-failures');
+    if (failuresButton) {
+      failuresButton.addEventListener('click', function () {
+        var on = traceLens.classList.toggle('failures-only');
+        failuresButton.setAttribute('aria-pressed', String(on));
+      });
+    }
+    traceLens.addEventListener('click', function (e) {
+      var jump = e.target && e.target.closest ? e.target.closest('.trace-jump') : null;
+      if (!jump) return;
+      e.preventDefault();
+      showLens('review');
+      turns.select(jump.dataset.turn);
+      var editId = jump.dataset.jumpEdit;
+      if (!editId) {
+        var item = turns.items.filter(function (i) { return i.dataset.turn === jump.dataset.turn; })[0];
+        if (item) item.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        return;
+      }
+      var panel = document.querySelector('.turn-panel.active');
+      var target = null;
+      if (panel) {
+        Array.prototype.forEach.call(panel.querySelectorAll('.edit-header'), function (header) {
+          if (!target && header.dataset.editId === editId) target = header.closest('.edit');
+        });
+      }
+      if (!target) return;
+      // An edit outside the project is hidden while "Project files only" is on.
+      if (target.getAttribute('data-outside') === '1' && !root.classList.contains('show-outside')) {
+        var scope = document.querySelector('.opt-toggle[data-opt="scope"]');
+        if (scope) scope.click();
+      }
+      revealEdit(target);
+    });
+    setTraceFilter('all');
+  }
+`;
