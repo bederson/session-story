@@ -85,15 +85,19 @@ export function validationState(runs) {
 function codeMetrics(story) {
   const totals = story.totals || {};
   const counts = new Map();
+  const outside = new Set();
+  const inside = [];
   for (const turn of story.turns || []) {
     for (const edit of turn.edits || []) {
       if (edit.combined_into) continue;
       counts.set(edit.rel, (counts.get(edit.rel) || 0) + 1);
+      if (edit.outside_cwd) outside.add(edit.rel);
+      else inside.push(edit);
     }
   }
   const files_edited_repeatedly = [...counts]
     .filter(([, n]) => n > 1)
-    .map(([rel, edits]) => ({ rel, edits }))
+    .map(([rel, edits]) => (outside.has(rel) ? { rel, edits, outside_cwd: true } : { rel, edits }))
     .sort((a, b) => (b.edits - a.edits) || a.rel.localeCompare(b.rel));
   const num = (v) => (Number.isFinite(v) ? v : null);
   return {
@@ -101,6 +105,14 @@ function codeMetrics(story) {
     lines_added: num(totals.added),
     lines_removed: num(totals.removed),
     edits: num(totals.edits),
+    // The same counts without files outside the project, for the
+    // "Project files only" view (the header does the same split).
+    in_project: {
+      files_changed: new Set(inside.map((e) => e.rel)).size,
+      lines_added: inside.reduce((n, e) => n + ((e.stats && e.stats.added) || 0), 0),
+      lines_removed: inside.reduce((n, e) => n + ((e.stats && e.stats.removed) || 0), 0),
+      edits: inside.length,
+    },
     files_edited_repeatedly,
   };
 }

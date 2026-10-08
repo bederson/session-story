@@ -64,9 +64,24 @@ test('computeMetrics derives execution, code, validation and reads from turns an
   ];
   const m = computeMetrics(story({ turns, events, totals: { turns: 1, files: 2, added: 2, removed: 1, edits: 2 } }));
   assert.deepEqual(m.execution, { duration_ms: 18500, turns: 1, tool_calls: 7, failed_tool_calls: 1, rejected_tool_calls: 1, commands: 2, failed_commands: 1, retries: 1 });
-  assert.deepEqual(m.code, { files_changed: 2, lines_added: 2, lines_removed: 1, edits: 2, files_edited_repeatedly: [{ rel: 'src/a.js', edits: 2 }] });
+  assert.deepEqual(m.code, { files_changed: 2, lines_added: 2, lines_removed: 1, edits: 2, in_project: { files_changed: 1, lines_added: 2, lines_removed: 1, edits: 2 }, files_edited_repeatedly: [{ rel: 'src/a.js', edits: 2 }] });
   assert.deepEqual(m.validation, { commands: 2, passed: 1, failed: 1, final_state: 'passed', last_command: 'npm test' });
   assert.deepEqual(m.reads, { files_read: 1, tool_calls: 3 });
+});
+
+test('code metrics split out project-only counts and flag repeated files outside the project', () => {
+  const turns = [{
+    index: 1, id: 'u1', prompt: 'go', bash: [],
+    edits: [
+      { id: 'e1', rel: 'src/a.js', stats: { added: 3, removed: 1 } },
+      { id: 'e2', rel: '~/.claude/memory/x.md', outside_cwd: true, stats: { added: 5, removed: 0 } },
+      { id: 'e3', rel: '~/.claude/memory/x.md', outside_cwd: true, stats: { added: 1, removed: 1 } },
+    ],
+  }];
+  const m = computeMetrics(story({ turns, totals: { turns: 1, files: 2, added: 9, removed: 2, edits: 3 } }));
+  assert.equal(m.code.files_changed, 2);
+  assert.deepEqual(m.code.in_project, { files_changed: 1, lines_added: 3, lines_removed: 1, edits: 1 });
+  assert.deepEqual(m.code.files_edited_repeatedly, [{ rel: '~/.claude/memory/x.md', edits: 2, outside_cwd: true }]);
 });
 
 test('computeMetrics orders runs by the trace, not by turn, so a retry across turns counts', () => {

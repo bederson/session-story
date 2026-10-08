@@ -1102,6 +1102,24 @@
                 "null"
               ]
             },
+            "in_project": {
+              "type": "object",
+              "description": "The same counts without edits to files outside the session's working directory, for the \"Project files only\" view.",
+              "properties": {
+                "files_changed": {
+                  "type": "integer"
+                },
+                "lines_added": {
+                  "type": "integer"
+                },
+                "lines_removed": {
+                  "type": "integer"
+                },
+                "edits": {
+                  "type": "integer"
+                }
+              }
+            },
             "files_edited_repeatedly": {
               "type": "array",
               "items": {
@@ -1112,6 +1130,9 @@
                   },
                   "edits": {
                     "type": "integer"
+                  },
+                  "outside_cwd": {
+                    "type": "boolean"
                   }
                 }
               }
