@@ -7,6 +7,7 @@
 import path from 'node:path';
 import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
+import { newEvent, finishEvent, resultStatus, eventSummary, sortEvents } from '../ir/trace.mjs';
 
 // Wrapper tags the harness injects into user-role records. None of this text
 // was typed by the human, so it is stripped before a record is considered a
@@ -345,6 +346,9 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   // Every tool_use id -> { name, input }, so an is_error result of any kind
   // (not just edits and bash) can be recorded on the turn it happened in.
   const pendingAny = new Map();
+  const events = [];
+  // tool_use id -> its trace event, until the tool_result arrives
+  const pendingEvents = new Map();
   let currentTurn = null;
   let gitBranch = null;
   // The harness writes an `ai-title` record whenever it (re)names the session;
@@ -375,11 +379,31 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         plan: null,
       };
       turns.push(currentTurn);
+      events.push(newEvent({
+        id: record.uuid,
+        kind: 'prompt',
+        turn: currentTurn.index,
+        summary: currentTurn.prompt.length > 200 ? currentTurn.prompt.slice(0, 200) : currentTurn.prompt,
+        startedAt: record.timestamp || null,
+      }));
       continue;
     }
 
     for (const block of allToolUseCalls(record)) {
-      if (currentTurn) pendingAny.set(block.id, { name: block.name, input: block.input, turnRef: currentTurn });
+      if (!currentTurn) continue;
+      pendingAny.set(block.id, { name: block.name, input: block.input, turnRef: currentTurn });
+      const command = block.name === BASH_TOOL ? ((block.input && block.input.command) || '') : null;
+      const event = newEvent({
+        id: block.id,
+        kind: block.name === AGENT_TOOL ? 'subagent' : 'tool',
+        turn: currentTurn.index,
+        tool: block.name,
+        category: command === null ? null : classifyCommand(command),
+        summary: eventSummary(block.name, block.input, cwd),
+        startedAt: record.timestamp || null,
+      });
+      events.push(event);
+      pendingEvents.set(block.id, event);
     }
 
     const shell = bashCalls(record);
@@ -421,6 +445,12 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
 
     const toolResult = toolResultFor(record);
     if (!toolResult) continue;
+
+    const event = pendingEvents.get(toolResult.toolUseId);
+    if (event) {
+      finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, toolResult.result));
+      pendingEvents.delete(toolResult.toolUseId);
+    }
 
     const info = pendingAny.get(toolResult.toolUseId);
     if (toolResult.isError && info) {
@@ -510,6 +540,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       dependencies: { manifests: [], installs: [], config_files: [] },
       git: null,
     },
+    trace: { events: sortEvents(events), cost_states: [] },
   };
 }
 

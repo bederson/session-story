@@ -495,3 +495,92 @@ test('leaves session.ai_title null when the transcript has no ai-title record', 
 
   assert.equal(story.session.ai_title, null);
 });
+
+function assistantTool({ uuid, ts, id, name, input, messageId, usage, model, version }) {
+  const record = {
+    type: 'assistant', uuid, timestamp: ts, gitBranch: 'main',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
+  };
+  if (messageId) record.message.id = messageId;
+  if (usage) record.message.usage = usage;
+  if (model) record.message.model = model;
+  if (version) record.version = version;
+  return record;
+}
+
+test('trace: emits a prompt event per turn whose id is the turn id', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'first' } },
+    { type: 'user', uuid: 'u2', timestamp: '2026-10-08T10:05:00.000Z', message: { role: 'user', content: 'second' } },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  const prompts = story.trace.events.filter((e) => e.kind === 'prompt');
+  assert.deepEqual(prompts.map((e) => e.id), ['u1', 'u2']);
+  assert.deepEqual(prompts.map((e) => e.turn), [1, 2]);
+  assert.equal(prompts[0].summary, 'first');
+});
+
+test('trace: every tool call becomes a tool event with latency and status, including Read and Grep', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'look around' } },
+    assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Read', input: { file_path: '/proj/src/a.js' } }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:01.400Z', toolUseId: 'tu1', content: { type: 'text', file: { filePath: '/proj/src/a.js', content: 'x', numLines: 1 } } }),
+    assistantTool({ uuid: 'a2', ts: '2026-10-08T10:00:02.000Z', id: 'tu2', name: 'Grep', input: { pattern: 'foo', path: '/proj/src' } }),
+    userRecord({ uuid: 'r2', ts: '2026-10-08T10:00:02.250Z', toolUseId: 'tu2', content: 'No matches found', isError: true }),
+    assistantBash({ uuid: 'a3', ts: '2026-10-08T10:00:03.000Z', id: 'tu3', command: 'npm test', description: 'run tests' }),
+    userRecord({ uuid: 'r3', ts: '2026-10-08T10:00:10.000Z', toolUseId: 'tu3', content: 'Error: Exit code 1\n1 failing', isError: true }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  const tools = story.trace.events.filter((e) => e.kind === 'tool');
+  assert.deepEqual(tools.map((e) => [e.id, e.tool, e.category, e.status, e.summary, e.duration_ms]), [
+    ['tu1', 'Read', null, 'ok', 'src/a.js', 400],
+    ['tu2', 'Grep', null, 'error', 'foo in src', 250],
+    ['tu3', 'Bash', 'test', 'error', 'npm test', 7000],
+  ]);
+  assert.ok(tools.every((e) => e.turn === 1 && e.parent_id === null && e.source === 'transcript'));
+});
+
+test('trace: a rejected tool use is rejected and an interrupted Bash is interrupted, not error', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantBash({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', command: 'rm -rf build' }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', content: 'User rejected tool use', isError: true }),
+    assistantBash({ uuid: 'a2', ts: '2026-10-08T10:00:03.000Z', id: 'tu2', command: 'npm run dev' }),
+    userRecord({ uuid: 'r2', ts: '2026-10-08T10:00:33.000Z', toolUseId: 'tu2', content: { stdout: '', stderr: '', interrupted: true }, isError: true }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  const byId = Object.fromEntries(story.trace.events.map((e) => [e.id, e]));
+  assert.equal(byId.tu1.status, 'rejected');
+  assert.equal(byId.tu2.status, 'interrupted');
+});
+
+test('trace: a tool call whose result never arrives stays unknown with no end and no latency', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Edit', input: { file_path: '/proj/a.js', old_string: 'a', new_string: 'b' } }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  const ev = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(ev.status, 'unknown');
+  assert.equal(ev.ended_at, null);
+  assert.equal(ev.duration_ms, null);
+});
+
+test('trace: events are in chronological order with the prompt first', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantBash({ uuid: 'a1', ts: '2026-10-08T10:00:05.000Z', id: 'tu1', command: 'ls' }),
+    assistantBash({ uuid: 'a2', ts: '2026-10-08T10:00:01.000Z', id: 'tu2', command: 'pwd' }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.deepEqual(story.trace.events.map((e) => e.id), ['u1', 'tu2', 'tu1']);
+});
+
+test('trace: a result for an unknown tool_use id is ignored', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'ghost', content: 'ok' }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.trace.events.length, 1);
+});
