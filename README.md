@@ -98,7 +98,7 @@ Two toggles in the nav apply across all three views, and persist across visits:
 
 | Step          | What happens                                                                                                                                             |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Extract**   | Locates the session transcript (and any subagent transcripts) under `~/.claude/projects/<slug>/`, parses it, and builds a typed IR (`story.json`) — including commands run, errors, git branch/commits, and dependency changes, all pulled straight from the transcript and git. |
+| **Extract**   | Locates the session transcript (and any subagent transcripts) under `~/.claude/projects/<slug>/`, parses it, and builds a typed IR (`story.json`) — including commands run, errors, git branch/commits, and dependency changes, all pulled straight from the transcript and git. It also records a chronological trace of every prompt, tool call and subagent with status and latency, per-turn durations, token usage (and cost, when Claude Code has written it), and deterministic metrics: the data behind the upcoming Trace view. Anything the transcript did not record stays `null`, never 0. |
 | **Summarize** | Claude fills in the session summary, one-sentence turn intents, and the report narrative (plan, decisions, outcome), read from the `--brief` projection only — never the full transcript. |
 | **Validate**  | Checks the IR's shape and, in `--strict` mode, that every turn, the session, and the report have their required fields filled in.                        |
 | **Render**    | Compiles the IR into one self-contained HTML file with inline CSS and JS — no external requests, no template step left undone.                           |
@@ -134,7 +134,7 @@ Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG
 npm test
 ```
 
-173 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
+262 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
 
 ## License
 

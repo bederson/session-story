@@ -42,3 +42,27 @@ Across the metafyl main transcripts: `assistant` 1676, `attachment` 1563,
 `src/transcript/claude-code.mjs`, `src/ir/trace.mjs` (new), `src/ir/metrics.mjs`
 (new), `src/ir/validate.mjs`, `schemas/story.schema.json`, `bin/story.mjs`,
 `src/transcript/locate.mjs`, `SKILL.md`, `README.md`, and tests under `test/`.
+
+## 5. Phase 1 inspection (2026-10-08)
+
+Two real sessions were extracted with the Phase 1 code, validated and rendered.
+
+**Live session `894d22cb` (Claude Code 2.1.292, three turns, no cost-state yet).**
+- 155 trace events: 3 prompts, 148 tool calls, 4 subagents. Statuses: 145 ok, 7 error, 2 rejected, 1 unknown (the call still running at extract time).
+- All four background agents (three Explore, one Plan) had `agent_type` from their meta file, were closed by their `<task-notification>` (`ended_source: notification`), and carried 13 to 21 child events with deduped usage.
+- Turn durations came from `turn_duration` records for the two finished turns and were derived for the turn in progress, as designed.
+- `metrics.usage.source` was `transcript` with `complete: true` and `total_cost_usd: null`. `environment` listed version 2.1.292 and both models used.
+
+**Finished session `3ad2cfc2` (one `cost-state` record).**
+- `metrics.usage.source` was `cost-state` and `total_cost_usd` equalled the record's `totalCostUSD` (4.2226…). The model list included `claude-haiku-4-5-20251001`, which never appears as an assistant `message.model` in that transcript: the harness's background calls are only visible through `cost-state`. The two sources also name the same model differently: the 98 assistant records say `claude-opus-5`, while `cost-state` says `claude-opus-5[1m]`. `environment.models` comes from the records and `metrics.usage.models` from `cost-state` when present, so the two lists can disagree; the Trace view should show them as separate facts rather than merge them.
+
+**Rendering.** Both stories validate, and the page rendered by this branch is byte-identical to the one `main` renders from the same story.json, with the same four tabs.
+
+**Fixed during inspection.**
+- `extract --latest -o <file>` ignored `-o`: the arg parser let `--latest` take `-o` as its value and wrote `./story.json`. Fixed in the parser.
+- `metrics.validation.last_command` held a whole multi-line heredoc. It now shows the first line, capped at 200 characters.
+
+**Known limits seen on real data, left as documented behaviour.**
+- `classifyCommand` classifies a line by any segment it contains, so a scripted heredoc that ends in `npm test` counts as a test command. Validation counts therefore include such compound lines.
+- A notification that arrives after the next prompt closes its agent event but cannot extend the already-closed earlier turn's derived duration.
+- When a story joins several sessions across `/clear` and only some have a `cost-state`, `metrics.usage` uses the cost-state totals and marks `complete: false`.
