@@ -1,0 +1,185 @@
+/**
+ * Deterministic session metrics, derived from the Story IR (turns, totals)
+ * and its trace events. Every leaf is a number or null; null means the
+ * transcript did not carry the information, and is never written as 0.
+ *
+ * Definitions (also in schemas/story.schema.json):
+ * - retry: a Bash run whose normalized command text equals the most recent
+ *   earlier run of that text, and that earlier run ended in `error`.
+ * - validation: Bash runs classified test|lint|build; final_state comes from
+ *   the last one (ok -> passed, error -> failed, none -> none, else unknown).
+ * - reads: Read|Glob|Grep events; files_read = distinct ok Read targets.
+ */
+
+import { msBetween } from './trace.mjs';
+
+export const FINAL_STATES = ['passed', 'failed', 'none', 'unknown'];
+export const METRIC_GROUPS = ['execution', 'code', 'validation', 'reads', 'usage'];
+const VALIDATION_CATEGORIES = new Set(['test', 'lint', 'build']);
+const READ_TOOLS = new Set(['Read', 'Glob', 'Grep']);
+
+export function normalizeCommand(command) {
+  return String(command || '').replace(/\s+/g, ' ').replace(/;\s*$/, '').trim();
+}
+
+/** Bash runs in trace order (falling back to turn order), each with its event status. */
+function bashRuns(story) {
+  const events = (story.trace && Array.isArray(story.trace.events)) ? story.trace.events : [];
+  const order = new Map(events.map((e, i) => [e.id, i]));
+  const statusOf = new Map(events.map((e) => [e.id, e.status]));
+  const runs = [];
+  for (const turn of story.turns || []) {
+    for (const b of turn.bash || []) {
+      runs.push({
+        command: b.command,
+        category: b.category,
+        status: statusOf.get(b.id) || legacyStatus(b),
+        order: order.has(b.id) ? order.get(b.id) : Number.MAX_SAFE_INTEGER,
+        index: runs.length,
+      });
+    }
+  }
+  runs.sort((a, b) => (a.order - b.order) || (a.index - b.index));
+  return runs.map(({ command, category, status }) => ({ command, category, status }));
+}
+
+function legacyStatus(b) {
+  if (b.rejected) return 'rejected';
+  if (b.interrupted) return 'interrupted';
+  if (b.ok === null || b.ok === undefined) return 'unknown';
+  return b.ok ? 'ok' : 'error';
+}
+
+export function countRetries(runs) {
+  const lastStatus = new Map();
+  let retries = 0;
+  for (const r of runs) {
+    const key = normalizeCommand(r.command);
+    if (!key) continue;
+    if (lastStatus.get(key) === 'error') retries++;
+    lastStatus.set(key, r.status);
+  }
+  return retries;
+}
+
+export function validationState(runs) {
+  const v = runs.filter((r) => VALIDATION_CATEGORIES.has(r.category));
+  const last = v.length > 0 ? v[v.length - 1] : null;
+  let final_state = 'none';
+  if (last) final_state = last.status === 'ok' ? 'passed' : last.status === 'error' ? 'failed' : 'unknown';
+  return {
+    commands: v.length,
+    passed: v.filter((r) => r.status === 'ok').length,
+    failed: v.filter((r) => r.status === 'error').length,
+    final_state,
+    last_command: last ? last.command : null,
+  };
+}
+
+function codeMetrics(story) {
+  const totals = story.totals || {};
+  const counts = new Map();
+  for (const turn of story.turns || []) {
+    for (const edit of turn.edits || []) {
+      if (edit.combined_into) continue;
+      counts.set(edit.rel, (counts.get(edit.rel) || 0) + 1);
+    }
+  }
+  const files_edited_repeatedly = [...counts]
+    .filter(([, n]) => n > 1)
+    .map(([rel, edits]) => ({ rel, edits }))
+    .sort((a, b) => (b.edits - a.edits) || a.rel.localeCompare(b.rel));
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  return {
+    files_changed: num(totals.files),
+    lines_added: num(totals.added),
+    lines_removed: num(totals.removed),
+    edits: num(totals.edits),
+    files_edited_repeatedly,
+  };
+}
+
+function readMetrics(toolEvents) {
+  const reads = toolEvents.filter((e) => READ_TOOLS.has(e.tool));
+  const files = new Set(reads.filter((e) => e.tool === 'Read' && e.status === 'ok').map((e) => e.summary));
+  return { files_read: files.size, tool_calls: reads.length };
+}
+
+const NO_USAGE = Object.freeze({
+  input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null,
+  total_cost_usd: null, models: [], source: 'none', complete: false,
+});
+
+function usageFromCostStates(states, links) {
+  const totals = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0 };
+  const models = new Set();
+  let cost = 0;
+  for (const s of states) {
+    cost += s.total_cost_usd || 0;
+    for (const [model, u] of Object.entries(s.model_usage || {})) {
+      models.add(model);
+      totals.input_tokens += u.inputTokens || 0;
+      totals.output_tokens += u.outputTokens || 0;
+      totals.cache_read_tokens += u.cacheReadInputTokens || 0;
+      totals.cache_creation_tokens += u.cacheCreationInputTokens || 0;
+    }
+  }
+  return {
+    ...totals,
+    total_cost_usd: cost,
+    models: [...models].sort(),
+    source: 'cost-state',
+    complete: states.length === links && states.every((s) => !s.has_unknown_model_cost),
+  };
+}
+
+function usageMetrics(story) {
+  const trace = story.trace || {};
+  const costStates = Array.isArray(trace.cost_states) ? trace.cost_states : [];
+  const links = (story.session && Array.isArray(story.session.chain) && story.session.chain.length) || 1;
+  if (costStates.length > 0) return usageFromCostStates(costStates, links);
+
+  const turnUsage = (story.turns || []).map((t) => t.usage).filter(Boolean);
+  const subagents = (Array.isArray(trace.events) ? trace.events : []).filter((e) => e.kind === 'subagent');
+  const subUsage = subagents.map((e) => e.usage).filter(Boolean);
+  const all = [...turnUsage, ...subUsage];
+  if (all.length === 0) return { ...NO_USAGE };
+  const sum = (key) => all.reduce((n, u) => n + (u[key] || 0), 0);
+  return {
+    input_tokens: sum('input_tokens'),
+    output_tokens: sum('output_tokens'),
+    cache_read_tokens: sum('cache_read_tokens'),
+    cache_creation_tokens: sum('cache_creation_tokens'),
+    total_cost_usd: null,
+    models: [...new Set(all.flatMap((u) => u.models || []))].sort(),
+    source: 'transcript',
+    complete: all.every((u) => u.complete) && subUsage.length === subagents.length,
+  };
+}
+
+/**
+ * @param {object} story - a Story IR, with or without `trace`
+ * @returns {{execution: object, code: object, validation: object, reads: object, usage: object}}
+ */
+export function computeMetrics(story) {
+  const hasTrace = !!(story.trace && Array.isArray(story.trace.events));
+  const toolEvents = hasTrace ? story.trace.events.filter((e) => e.kind !== 'prompt') : [];
+  const runs = bashRuns(story);
+  const session = story.session || {};
+  return {
+    execution: {
+      duration_ms: msBetween(session.started_at, session.ended_at),
+      turns: (story.turns || []).length,
+      tool_calls: hasTrace ? toolEvents.length : null,
+      failed_tool_calls: hasTrace ? toolEvents.filter((e) => e.status === 'error').length : null,
+      rejected_tool_calls: hasTrace ? toolEvents.filter((e) => e.status === 'rejected').length : null,
+      commands: runs.length,
+      failed_commands: runs.filter((r) => r.status === 'error').length,
+      retries: countRetries(runs),
+    },
+    code: codeMetrics(story),
+    validation: validationState(runs),
+    reads: hasTrace ? readMetrics(toolEvents) : { files_read: null, tool_calls: null },
+    usage: usageMetrics(story),
+  };
+}
