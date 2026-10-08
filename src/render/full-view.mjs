@@ -8,21 +8,15 @@
 import { escapeHtml } from './diff.mjs';
 
 /**
- * Bounds on the full-file view, so opting into it cannot turn a shareable
- * artifact into a multi-megabyte download. A file is skipped when it is too
- * long *or* too heavy (minified or data files have few lines but huge ones),
- * and the page as a whole spends a fixed budget of spliced content.
+ * Bounds on the full-file view, so opting into it cannot bloat a shareable
+ * artifact without limit. A file is skipped when it is too long *or* too
+ * heavy (minified or data files have few lines but huge ones), before or
+ * after the edit, and the page as a whole spends a fixed budget of spliced
+ * content (see planFullViews).
  */
 export const FULL_VIEW_MAX_LINES = 2000;
 export const FULL_VIEW_MAX_CHARS = 80000;
-export const FULL_VIEW_BUDGET_CHARS = 400000;
-
-let budgetLeft = FULL_VIEW_BUDGET_CHARS;
-
-/** Called once per page render (see renderPage). */
-export function resetFullViewBudget() {
-  budgetLeft = FULL_VIEW_BUDGET_CHARS;
-}
+export const FULL_VIEW_BUDGET_CHARS = 2000000;
 
 function splitLines(text) {
   const lines = text.split('\n');
@@ -69,6 +63,9 @@ export function spliceFullFile(baseText, hunks) {
     newNo++;
   }
 
+  // The base check alone lets a large new file through: it starts from ''.
+  if (rows.length > FULL_VIEW_MAX_LINES) return null;
+  if (rows.reduce((sum, row) => sum + row.text.length, 0) > FULL_VIEW_MAX_CHARS) return null;
   return rows;
 }
 
@@ -78,7 +75,6 @@ export function spliceFullFile(baseText, hunks) {
  * @returns {string} HTML, or '' when no full view can be produced
  */
 export function renderFullFile(baseText, hunks) {
-  if (budgetLeft <= 0) return '';
   const rows = spliceFullFile(baseText, hunks);
   if (!rows) return '';
 
@@ -91,7 +87,38 @@ export function renderFullFile(baseText, hunks) {
       `</tr>`)
     .join('');
 
-  const html = `<table class="hunk full">${body}</table>`;
-  budgetLeft -= html.length; // charge what the page actually carries
-  return html;
+  return `<table class="hunk full">${body}</table>`;
+}
+
+/**
+ * Decide which edits get a full-file view, building each one once. The
+ * budget goes to the newest turns first, since those are the ones a reader
+ * is most likely reviewing, and is charged by rendered HTML size. Review
+ * carries these views; the Diff lens refers to them (see renderViews).
+ *
+ * Edits that never get a full view are left out of the map: files outside
+ * the project, a diff shared across turns (`combined_into`), and edits that
+ * failed or never finished.
+ * @returns {Map<string, string|null>} edit id -> the view's HTML, '' when no
+ *   pre-edit text is known or the file is too large, or null when the page
+ *   budget ran out before this edit
+ */
+export function planFullViews(story, bases, budget = FULL_VIEW_BUDGET_CHARS) {
+  const plan = new Map();
+  let left = budget;
+  for (const turn of [...story.turns].reverse()) {
+    for (const edit of [...turn.edits].reverse()) {
+      if (edit.outside_cwd || edit.combined_into) continue;
+      if (edit.result === 'error' || edit.result === 'unknown') continue;
+      const base = bases.get(edit.id);
+      const html = renderFullFile(typeof base === 'string' ? base : null, edit.hunks || []);
+      if (html.length > left) {
+        plan.set(edit.id, null);
+        continue;
+      }
+      left -= html.length;
+      plan.set(edit.id, html);
+    }
+  }
+  return plan;
 }

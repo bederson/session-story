@@ -3,7 +3,6 @@ import { icon } from './icons.mjs';
 import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle } from './lenses.mjs';
 import { renderReportLens } from './report.mjs';
 import { renderTraceLens, hasTrace, TRACE_CSS, TRACE_SCRIPT } from './trace-lens.mjs';
-import { resetFullViewBudget } from './full-view.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
 
 // Runs in <head> before first paint, after the shared theme restore: the
@@ -131,15 +130,12 @@ html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border
 .turn-prompt, .story-prompt { margin: 0; padding: 8px 12px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .timeline-item.selected .turn-prompt { background: var(--surface-3); }
 .turn-summary { margin: 8px 0 0; color: var(--text-2); font-size: 13px; }
-.turn-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.chip { font-family: var(--mono); font-size: 11px; line-height: 1.45; appearance: none; text-align: left; background: var(--surface-3); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; color: var(--text-2); max-width: 100%; overflow-wrap: anywhere; cursor: pointer; transition: color .15s ease, border-color .15s ease; }
-.chip:hover { color: var(--text); border-color: var(--border-strong); }
-.chip.churn { border-color: var(--accent-ring); color: var(--accent-ink); }
-.chip.churn::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; }
 .turn-panels { min-width: 0; }
 .turn-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
 .turn-panel + .turn-panel { margin-top: 20px; }
 html.js .turn-panel:not(.active) { display: none; }
+.panel-prompt-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.panel-prompt { margin: 0; max-height: 14em; overflow: auto; padding: 8px 12px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .turn-replies { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
 .replies-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .replies-head .icon { color: var(--accent-ink); }
@@ -163,7 +159,7 @@ html.js .turn-panel.no-pick .pick-hint { display: flex; }
 .story-card .turn-replies { margin: 12px 0 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
 /* ---- edits & hunks ------------------------------------------------------ */
-.edit { scroll-margin-top: 72px; } /* clear the sticky lens nav when a chip scrolls here */
+.edit { scroll-margin-top: 72px; } /* clear the sticky lens nav when a diff link scrolls here */
 .edit.flash { animation: flash 1.2s ease-out both; }
 @keyframes flash { 0%, 40% { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ring); } 100% { background: transparent; box-shadow: inset 0 0 0 2px transparent; } }
 .edit-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12.5px; padding: 9px 16px; background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -221,6 +217,7 @@ html.js .file-panel:not(.active) { display: none; }
 .story-prompt { font-size: 15px; margin-bottom: 12px; }
 .story-summary { margin: 0; font-size: 14.5px; color: var(--text); }
 .story-summary:empty { display: none; }
+.turn-filecount { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--text-3); font-size: 12px; }
 .story-filecount { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--text-3); font-size: 12.5px; }
 .story-code { margin: 12px -22px -16px; border-top: 1px solid var(--border); }
 .story-code summary { display: flex; align-items: center; gap: 6px; padding: 10px 22px; cursor: pointer; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; list-style: none; }
@@ -355,9 +352,29 @@ const SCRIPT = THEME_TOGGLE_JS + `
       var set = root.classList.toggle(opt.cls);
       try { localStorage.setItem(opt.key, set ? opt.whenSet : opt.whenUnset); } catch (e) {}
       sync();
+      fillFullRefs();
     });
     sync();
   });
+  // The Diff lens carries no full-file views of its own: each slot names the
+  // edit whose view the Review lens holds, copied in when Full file is on.
+  function fillFullRefs() {
+    if (!root.classList.contains('full-context')) return;
+    var slots = document.querySelectorAll('#lens-diff .view-full[data-full-ref]');
+    if (slots.length === 0) return;
+    // Match on dataset rather than a selector: ids may need CSS escaping.
+    var views = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#lens-review .edit-header[data-edit-id]'), function (header) {
+      var view = header.parentNode.querySelector('.view-full');
+      if (view && !views[header.dataset.editId]) views[header.dataset.editId] = view;
+    });
+    Array.prototype.forEach.call(slots, function (slot) {
+      var view = views[slot.dataset.fullRef];
+      if (view) slot.innerHTML = view.innerHTML;
+      slot.removeAttribute('data-full-ref');
+    });
+  }
+  fillFullRefs();
 
   // Lens tabs, remembered in the URL hash.
   var lensButtons = Array.prototype.slice.call(document.querySelectorAll('.lens-tab'));
@@ -438,35 +455,14 @@ const SCRIPT = THEME_TOGGLE_JS + `
   // "All changes" is picked.
   var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, null); });
 
-  // A file chip under a review step opens the turn's panel filtered to that file.
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Scroll an edit block into view and flash it (file chips and the Trace lens).
+  // Scroll an edit block into view and flash it (the Trace lens's diff links).
   function revealEdit(target) {
     target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
     target.classList.remove('flash');
     void target.offsetWidth; // restart the animation when the same edit is revealed twice
     target.classList.add('flash');
   }
-  Array.prototype.forEach.call(document.querySelectorAll('.turn-chips .chip'), function (chip) {
-    chip.addEventListener('click', function () {
-      // Select the turn first: inactive panels are display:none, so the target
-      // has no layout until its panel is shown. The item's own bubbled handler
-      // runs after this one, hence doing it here rather than relying on it.
-      var item = chip.closest ? chip.closest('.timeline-item') : null;
-      if (item) turns.select(item.dataset.turn);
-      var panel = document.querySelector('.turn-panel.active');
-      if (!panel) return;
-      // Match on dataset rather than a [data-file="..."] selector: paths can
-      // carry characters that would need CSS escaping, and there is no polyfill.
-      var target = null;
-      Array.prototype.forEach.call(panel.querySelectorAll('.edit'), function (edit) {
-        if (!target && edit.dataset.file === chip.dataset.file) target = edit;
-      });
-      if (!target) return;
-      filterPanelFiles(panel, chip.dataset.file);
-      revealEdit(target);
-    });
-  });
   wireList('.file-tree-item', '.file-panel', 'file', 'filePanel');
 ${TRACE_SCRIPT}
   Array.prototype.forEach.call(document.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
@@ -541,7 +537,6 @@ const LIBRARY_SCRIPT = `
 export function renderPage(story, opts = {}) {
   const title = storyTitle(story);
   const library = opts.library || null;
-  resetFullViewBudget();
 
   return (
     `<!doctype html>\n` +

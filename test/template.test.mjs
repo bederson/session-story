@@ -74,19 +74,17 @@ test('renderPage adds the scope and full-file toggles, restored from storage bef
   assert.match(html, /#lens-story/);
 });
 
-test('renderPage wires file chips to scroll to the matching edit, clear of the sticky lens nav', () => {
+test('renderPage scrolls a revealed edit clear of the sticky lens nav, with no file chips left to wire', () => {
   const html = renderPage(sampleStory());
 
-  // CSS: the scroll target clears the sticky nav and flashes on arrival
+  // CSS: the scroll target (the Trace lens's diff links) clears the sticky nav and flashes on arrival
   assert.match(html, /\.edit \{ scroll-margin-top: \d+px; \}/);
   assert.match(html, /\.edit\.flash \{ animation: flash /);
   assert.match(html, /@keyframes flash /);
-  assert.match(html, /\.chip \{[^}]*cursor: pointer/);
-  // JS: chips select their turn, then scroll to the edit with the same file key
-  assert.match(html, /\.turn-chips \.chip/);
-  assert.match(html, /turns\.select\(item\.dataset\.turn\)/);
-  assert.match(html, /edit\.dataset\.file === chip\.dataset\.file/);
   assert.match(html, /scrollIntoView/);
+  // The Review timeline shows a file count, not clickable file chips.
+  assert.doesNotMatch(html, /\.turn-chips/);
+  assert.doesNotMatch(html, /\.chip \{/);
 });
 
 test('renderPage stays self-contained by default: no sidecar script, no library chrome', () => {
@@ -148,4 +146,11 @@ test('the page script wires trace filters, failures-only and jumps to a Review e
   assert.match(script, /classList\.toggle\('failures-only'\)/);
   assert.match(script, /dataset\.editId === editId/);
   assert.match(script, /function revealEdit\(target\)/);
+});
+
+test('renderPage fills the Diff lens full-file slots from the Review copies when Full file is on', () => {
+  const html = renderPage(sampleStory());
+
+  assert.match(html, /function fillFullRefs\(\)/);
+  assert.match(html, /data-full-ref/);
 });

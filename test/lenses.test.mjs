@@ -43,7 +43,7 @@ test('renderHeader falls back to a truncated first prompt as the title when none
   assert.match(html, /This is the very first prompt/);
 });
 
-test('renderReviewLens lists one timeline entry per turn with prompt, summary, file chips, and churn marker', async () => {
+test('renderReviewLens lists one timeline entry per turn with prompt, summary and file count', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
     turns: [
@@ -61,34 +61,33 @@ test('renderReviewLens lists one timeline entry per turn with prompt, summary, f
   // The prompt itself must render as visible text, not only as a title tooltip.
   assert.match(html, /<blockquote class="turn-prompt">Add a title prop<\/blockquote>/);
   assert.match(html, /<p class="turn-summary">Added title prop\.<\/p>/);
-  assert.match(html, /src\/Panel\.tsx/);
-  assert.match(html, /class="[^"]*churn[^"]*"/);
+  assert.match(html, /<p class="turn-filecount">[^]*?1 file changed/);
   assert.match(html, /class="hunk"/); // edit panel content rendered via renderEdit
 });
 
-test('renderReviewLens renders each file chip as a button keyed to the file, so it can scroll to that edit', async () => {
+test('renderReviewLens counts distinct files on the left instead of listing them, following the project toggle', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
     turns: [
       { index: 1, id: 'u1', at: null, prompt: 'Add a title prop', summary: '', edits: [
         { id: 'e1', tool: 'Edit', file: '/p/src/Panel.tsx', rel: 'src/Panel.tsx', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 1 } },
-        // a second edit to the same file must not produce a second chip
+        // a second edit to the same file is still one file
         { id: 'e2', tool: 'Edit', file: '/p/src/Panel.tsx', rel: 'src/Panel.tsx', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
         { id: 'e3', tool: 'Edit', file: '/tmp/s.json', rel: '../../tmp/s.json', outside_cwd: true, kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 1, removed: 0 } },
       ] },
+      { index: 2, id: 'u2', at: null, prompt: 'Just asking', summary: '', edits: [] },
     ],
     files: [{ rel: 'src/Panel.tsx', language: 'typescript', turns: [1], churn: true, stats: { added: 2, removed: 1 } }],
   });
 
   const html = renderReviewLens(story);
+  const timeline = html.slice(0, html.indexOf('turn-panels'));
 
-  const chips = html.match(/<button type="button" class="chip[^"]*" data-file="src\/Panel\.tsx"/g) || [];
-  assert.equal(chips.length, 1);
-  // the chip key must match the key renderEdit puts on the block it scrolls to
-  assert.match(html, /<div class="edit" data-file="src\/Panel\.tsx"/);
-  // churn and scope markers survive the change from span to button
-  assert.match(html, /class="chip churn" data-file="src\/Panel\.tsx"/);
-  assert.match(html, /class="chip" data-file="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
+  assert.doesNotMatch(timeline, /class="chip/);
+  assert.doesNotMatch(timeline, /src\/Panel\.tsx/);
+  assert.match(timeline, /<span class="v-in">1 file changed<\/span><span class="v-all">2 files changed<\/span>/);
+  // a turn with no edits gets no count line
+  assert.equal((timeline.match(/turn-filecount/g) || []).length, 1);
 });
 
 test('renderReviewLens gives a multi-file turn panel a file filter: "All changes" plus one button per file', async () => {
@@ -129,7 +128,7 @@ test('renderReviewLens gives a multi-file turn panel a file filter: "All changes
   assert.match(panel2, /data-file-filter="src\/a\.ts" aria-pressed="false"/);
 });
 
-test('renderReviewLens escapes quotes in a file chip key', async () => {
+test("renderReviewLens escapes quotes in an edit's file key", async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
     turns: [{ index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [
@@ -290,12 +289,11 @@ test('renderHeader skips combined_into shares in its project-only counts, as the
   assert.match(html, /\(1 edit\) hidden/);
 });
 
-test('renderReviewLens marks out-of-project edits and chips, and explains a turn left empty by the filter', async () => {
+test('renderReviewLens marks out-of-project edits, and explains a turn left empty by the filter', async () => {
   const { renderReviewLens } = await import('../src/render/lenses.mjs');
 
   const html = renderReviewLens(outsideStory());
 
-  assert.match(html, /<button type="button" class="chip[^"]*" data-file="[^"]*" data-outside="1"/);
   assert.match(html, /<div class="edit" data-file="[^"]*" data-outside="1">/);
   assert.match(html, /<div class="edit" data-file="a\.ts">/); // the in-project edit is not marked
   // turn 2 only touched a file outside the project
@@ -568,4 +566,40 @@ test("renderStoryLens shows Claude's output on a card, and nothing extra when a 
   assert.match(cards[0], /<summary>1 earlier message<\/summary>/);
   assert.match(cards[0], /Finished &lt;ok&gt;/);
   assert.doesNotMatch(cards[1], /turn-replies/);
+});
+
+test("renderReviewLens repeats the turn's prompt at the top of its panel, before Claude's output", async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'Fix <the> bug', summary: '', edits: [], replies: [{ at: null, text: 'Fixed' }] },
+    ],
+    files: [],
+  });
+
+  const panel = renderReviewLens(story).split('data-turn-panel="1"')[1];
+
+  assert.match(panel, /<blockquote class="panel-prompt">Fix &lt;the&gt; bug<\/blockquote>/);
+  assert.ok(panel.indexOf('panel-prompt') > panel.indexOf('panel-head'));
+  assert.ok(panel.indexOf('panel-prompt') < panel.indexOf('turn-replies'));
+});
+
+test('Review carries each full-file view once; the Diff lens refers to it instead of repeating it', async () => {
+  const { renderReviewLens, renderDiffLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [
+        { id: 'e1', tool: 'Write', file: '/p/a.ts', rel: 'a.ts', kind: 'create', by_subagent: null, result: 'ok', before: '',
+          hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ['+one'] }], stats: { added: 1, removed: 0 } },
+      ] },
+    ],
+    files: [{ rel: 'a.ts', language: 'typescript', turns: [1], churn: false, stats: { added: 1, removed: 0 } }],
+  });
+
+  const review = renderReviewLens(story);
+  const diff = renderDiffLens(story);
+
+  assert.match(review, /<div class="view view-full"><table class="hunk full">/);
+  assert.match(diff, /<div class="view view-full" data-full-ref="e1"><\/div>/);
+  assert.doesNotMatch(diff, /<table class="hunk full">/);
 });

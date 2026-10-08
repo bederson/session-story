@@ -1,6 +1,7 @@
 import { escapeHtml, renderEdit, renderViews } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { buildFileBases } from '../ir/file-state.mjs';
+import { planFullViews } from './full-view.mjs';
 
 // Reconstructed pre-edit file texts, memoised per story: all three lenses
 // need them and chaining is pure string work.
@@ -8,6 +9,27 @@ const BASES = new WeakMap();
 function basesFor(story) {
   if (!BASES.has(story)) BASES.set(story, buildFileBases(story));
   return BASES.get(story);
+}
+
+const FULL_VIEWS = new WeakMap();
+function fullViewsFor(story) {
+  if (!FULL_VIEWS.has(story)) FULL_VIEWS.set(story, planFullViews(story, basesFor(story)));
+  return FULL_VIEWS.get(story);
+}
+
+/**
+ * How an edit's full-file pane is filled. Review holds the views built by
+ * planFullViews; the Diff lens (`asRef`) points at Review's copy instead,
+ * so the page carries each view once.
+ */
+function fullViewFor(story, edit, asRef = false) {
+  if (edit.outside_cwd) return 'skip';
+  if (edit.combined_into) return 'combined';
+  const plan = fullViewsFor(story);
+  if (!plan.has(edit.id)) return { html: '' };
+  const html = plan.get(edit.id);
+  if (html === null) return 'budget';
+  return asRef && html ? { ref: edit.id } : { html };
 }
 
 /** Edits to files that live inside the project directory. */
@@ -312,24 +334,9 @@ export function renderHeader(story) {
   );
 }
 
-function fileIsChurned(story, rel) {
-  const entry = story.files.find((f) => f.rel === rel);
-  return entry ? entry.churn : false;
-}
-
-function renderFileChips(story, edits) {
-  const seen = new Set();
-  return edits
-    .filter((edit) => (seen.has(edit.rel) ? false : seen.add(edit.rel)))
-    .map((edit) => {
-      const churn = fileIsChurned(story, edit.rel) ? ' churn' : '';
-      const outside = edit.outside_cwd ? ' data-outside="1"' : '';
-      return (
-        `<button type="button" class="chip${churn}" data-file="${escapeHtml(edit.rel)}"${outside}` +
-        ` title="Jump to this file's changes">${escapeHtml(edit.rel)}</button>`
-      );
-    })
-    .join('');
+function fileCountPhrase(edits) {
+  const n = new Set(edits.map((e) => e.rel)).size;
+  return `${n} ${plural(n, 'file')} changed`;
 }
 
 function turnTime(turn) {
@@ -410,7 +417,7 @@ function renderReplies(turn) {
 
 /**
  * Review lens: a timeline of turns on the left (numbered node on a rail,
- * full prompt, intent, activity bar, file chips), each linked by data-turn
+ * full prompt, intent, activity bar, file count), each linked by data-turn
  * to a panel of that turn's edits. Selection between turns is handled by
  * the page's inline script; every panel is rendered so the page works with
  * JS disabled too (all turns simply show stacked).
@@ -431,7 +438,9 @@ export function renderReviewLens(story) {
         `<blockquote class="turn-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         summaryHtml +
         renderActivityBar(turn, max) +
-        `<div class="turn-chips">${renderFileChips(story, turn.edits)}</div>` +
+        (turn.edits.length > 0
+          ? `<p class="turn-filecount">${icon('files')}${dual(fileCountPhrase(inProject(turn.edits)), fileCountPhrase(turn.edits))}</p>`
+          : '') +
         `</div>` +
         `</li>`
       );
@@ -443,7 +452,7 @@ export function renderReviewLens(story) {
       const editsHtml = turn.edits.length > 0
         ? turn.edits.map((edit) => renderEdit(edit, {
             base: bases.get(edit.id),
-            fullView: edit.outside_cwd ? 'skip' : true,
+            fullView: fullViewFor(story, edit),
           })).join('')
         : `<p class="no-edits">${icon('review')}No file edits in this turn.</p>`;
       // A turn that only touched files outside the project looks empty
@@ -454,6 +463,7 @@ export function renderReviewLens(story) {
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
+        `<div class="panel-prompt-wrap"><blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
         renderReplies(turn) +
         renderFileFilter(turn.edits) +
         filteredNote +
@@ -504,7 +514,7 @@ export function renderDiffLens(story) {
             `</div>`;
           occurrences.push(
             `<div class="occurrence">${tag}` +
-            renderViews(edit.hunks, bases.get(edit.id), edit.base_source === 'disk', edit.outside_cwd ? 'skip' : true) +
+            renderViews(edit.hunks, bases.get(edit.id), edit.base_source === 'disk', fullViewFor(story, edit, true)) +
             `</div>`
           );
         }
@@ -545,10 +555,6 @@ export function renderStoryLens(story) {
   const bases = basesFor(story);
   const cards = story.turns
     .map((turn) => {
-      const countPhrase = (edits) => {
-        const n = new Set(edits.map((e) => e.rel)).size;
-        return `${n} ${plural(n, 'file')} changed`;
-      };
       // Only edits with a diff go behind "Show code": a failed, interrupted or
       // binary edit has no code to show, and a toggle that opens onto nothing
       // is noise. When every one of them is outside the project, the toggle
@@ -566,7 +572,7 @@ export function renderStoryLens(story) {
         renderReplies(turn) +
         renderActivityBar(turn, max) +
         `<p class="story-filecount">${icon('files')}` +
-        dual(countPhrase(inProject(turn.edits)), countPhrase(turn.edits)) + `</p>` +
+        dual(fileCountPhrase(inProject(turn.edits)), fileCountPhrase(turn.edits)) + `</p>` +
         (editsHtml
           ? `<details class="story-code"${codeOutside}><summary>${icon('code')}Show code</summary>${editsHtml}</details>`
           : '') +

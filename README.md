@@ -79,7 +79,7 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 | View       | Best for                         | Shows                                                                                         |
 | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, files touched — with Claude's text output for the turn, and its code behind an “All changes” / per-file picker |
+| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, number of files changed — with the turn's prompt and Claude's text output in its panel, and its code behind an “All changes” / per-file picker |
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
 | **Story**  | A stakeholder who wants the gist | A narrative card per turn with Claude's text output, code collapsed by default |
 | **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |

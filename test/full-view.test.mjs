@@ -71,26 +71,69 @@ test('spliceFullFile refuses a base whose sheer size would bloat the page', asyn
   assert.equal(spliceFullFile(`${'x'.repeat(FULL_VIEW_MAX_CHARS + 1)}\n`, []), null);
 });
 
-test('renderFullFile stops emitting full views once the page budget is spent, and resumes after a reset', async () => {
-  const { resetFullViewBudget, FULL_VIEW_BUDGET_CHARS } = await import('../src/render/full-view.mjs');
-  resetFullViewBudget();
+test('spliceFullFile refuses a result too large for the page, even when the base is empty', async () => {
+  const { FULL_VIEW_MAX_CHARS } = await import('../src/render/full-view.mjs');
 
-  const chunk = 'some line of code\n'.repeat(1000);
-  let emitted = 0;
-  for (let i = 0; i < Math.ceil(FULL_VIEW_BUDGET_CHARS / chunk.length) + 2; i++) {
-    if (renderFullFile(chunk, [])) emitted++;
-  }
-
-  assert.ok(emitted > 0, 'some full views fit in the budget');
-  assert.equal(renderFullFile(chunk, []), '', 'budget is spent');
-  resetFullViewBudget();
-  assert.notEqual(renderFullFile(chunk, []), '', 'reset restores the budget');
+  // A created file starts from '' so only the result can show its size.
+  const huge = Array.from({ length: FULL_VIEW_MAX_LINES + 1 }, () => '+x');
+  assert.equal(spliceFullFile('', [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: huge.length, lines: huge }]), null);
+  const heavy = [`+${'x'.repeat(FULL_VIEW_MAX_CHARS + 1)}`];
+  assert.equal(spliceFullFile('', [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: heavy }]), null);
 });
 
-test('renderViews shows a placeholder instead of splicing the file when told to skip, and spends no page budget', async () => {
+function planStory(turnEdits) {
+  return {
+    turns: turnEdits.map((edits, i) => ({ index: i + 1, edits })),
+  };
+}
+
+function planEdit(id, extra = {}) {
+  return { id, rel: `${id}.txt`, result: 'ok', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }], ...extra };
+}
+
+test('planFullViews spends the page budget on the newest turns first and marks the rest as left out', async () => {
+  const { planFullViews } = await import('../src/render/full-view.mjs');
+  const base = 'a\n' + 'line of code\n'.repeat(400);
+  const story = planStory([[planEdit('old')], [planEdit('mid')], [planEdit('new')]]);
+  const bases = new Map([['old', base], ['mid', base], ['new', base]]);
+  const one = renderFullFile(base, story.turns[0].edits[0].hunks).length;
+
+  const plan = planFullViews(story, bases, one * 2);
+
+  assert.match(plan.get('new'), /<table class="hunk full">/);
+  assert.match(plan.get('mid'), /<table class="hunk full">/);
+  assert.equal(plan.get('old'), null, 'out of budget');
+});
+
+test('planFullViews leaves out edits that never get a full view, and records "unavailable" as an empty string', async () => {
+  const { planFullViews } = await import('../src/render/full-view.mjs');
+  const story = planStory([[
+    planEdit('outside', { outside_cwd: true }),
+    planEdit('shared', { combined_into: 2 }),
+    planEdit('failed', { result: 'error' }),
+    planEdit('nobase'),
+  ]]);
+
+  const plan = planFullViews(story, new Map());
+
+  assert.equal(plan.has('outside'), false);
+  assert.equal(plan.has('shared'), false);
+  assert.equal(plan.has('failed'), false);
+  assert.equal(plan.get('nobase'), '');
+});
+
+test('renderViews places a planned full view, a reference to one, or a note for each other case', async () => {
   const { renderViews } = await import('../src/render/diff.mjs');
-  const { resetFullViewBudget, renderFullFile } = await import('../src/render/full-view.mjs');
-  resetFullViewBudget();
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }];
+
+  assert.match(renderViews(hunks, null, false, { html: '<table class="hunk full"></table>' }), /<div class="view view-full"><table class="hunk full">/);
+  assert.match(renderViews(hunks, null, false, { html: '' }), /did not record its contents/);
+  assert.match(renderViews(hunks, null, false, { ref: 'e"1' }), /<div class="view view-full" data-full-ref="e&quot;1"><\/div>/);
+  assert.match(renderViews(hunks, null, false, 'budget'), /left out to keep the page small/i);
+});
+
+test('renderViews shows a placeholder instead of splicing the file when told to skip', async () => {
+  const { renderViews } = await import('../src/render/diff.mjs');
 
   const html = renderViews(
     [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }],
@@ -100,6 +143,4 @@ test('renderViews shows a placeholder instead of splicing the file when told to 
   assert.match(html, /class="view view-full"/);
   assert.doesNotMatch(html, /<table class="hunk full">/);
   assert.match(html, /outside the project/i);
-  // the skip never touched the shared budget, so a real full view still fits
-  assert.notEqual(renderFullFile('a\nb\n', []), '');
 });

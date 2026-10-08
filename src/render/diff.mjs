@@ -70,15 +70,20 @@ export function renderHunk(hunk) {
  * @param {string|null} base - the file as it stood before this edit
  * @param {boolean} [approximate] - base came from the file's current disk
  *   contents rather than the transcript, so it may include later changes
- * @param {boolean|'skip'} [withFull] - render the full-file view (true),
- *   omit it entirely (false, used by the Story lens), or show a
- *   placeholder without attempting to splice one (`'skip'`, used for
- *   out-of-project edits so the shared page budget goes to project files)
+ * @param {boolean|string|{html: string}|{ref: string}} [withFull] - render
+ *   the full-file view here (true); omit it entirely (false, used by the
+ *   Story lens); use one built ahead by planFullViews (`{html}`, '' when
+ *   none could be built); leave a slot the page script fills from the
+ *   Review lens's copy of the same edit (`{ref}`, so the page carries each
+ *   view once); or show a placeholder saying why there is none (`'skip'`
+ *   for out-of-project edits, `'combined'` for a diff shared across turns,
+ *   `'budget'` when the page budget ran out)
  * @returns {string}
  */
 const SKIP_REASONS = {
   skip: 'Full file view is not shown for files outside the project.',
   combined: 'Full file view is shown on the turn this diff is counted under.',
+  budget: 'Full file view was left out to keep the page small; newer turns get it first.',
 };
 
 export function renderViews(hunks, base, approximate = false, withFull = true) {
@@ -93,7 +98,15 @@ export function renderViews(hunks, base, approximate = false, withFull = true) {
       `<div class="view view-full"><p class="edit-unknown">${icon('filter')}${skipped}</p></div>`
     );
   }
-  const fullHtml = renderFullFile(typeof base === 'string' ? base : null, hunks || []);
+  if (withFull && typeof withFull === 'object' && 'ref' in withFull) {
+    return (
+      `<div class="view view-hunks">${hunksHtml}</div>` +
+      `<div class="view view-full" data-full-ref="${escapeHtml(withFull.ref)}"></div>`
+    );
+  }
+  const fullHtml = withFull && typeof withFull === 'object'
+    ? withFull.html
+    : renderFullFile(typeof base === 'string' ? base : null, hunks || []);
   const full = fullHtml ||
     `<p class="edit-unknown">${icon('warning')}The full file is not available for this edit ` +
     `(the transcript did not record its contents).</p>`;
@@ -115,8 +128,8 @@ export function renderViews(hunks, base, approximate = false, withFull = true) {
  * never arrived. Edits to files outside the project are marked so the
  * page's scope filter can hide them.
  * @param {object} edit
- * @param {{base?: string|null, fullView?: boolean|'skip'}} [opts] - reconstructed
- *   pre-edit file text, and whether to include the full-file view
+ * @param {{base?: string|null, fullView?: boolean|string|object}} [opts] - reconstructed
+ *   pre-edit file text, and the full-file view mode (see renderViews)
  * @returns {string}
  */
 /**
