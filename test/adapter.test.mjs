@@ -584,3 +584,54 @@ test('trace: a result for an unknown tool_use id is ignored', () => {
   const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
   assert.equal(story.trace.events.length, 1);
 });
+
+function turnDurationRecord({ uuid, ts, durationMs }) {
+  return { type: 'system', subtype: 'turn_duration', uuid, timestamp: ts, durationMs, isMeta: false };
+}
+
+test('turn duration sums the harness turn_duration records of the turn and marks the source transcript', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantBash({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', command: 'ls' }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', content: { stdout: 'a', stderr: '', interrupted: false } }),
+    turnDurationRecord({ uuid: 's1', ts: '2026-10-08T10:00:02.100Z', durationMs: 1000 }),
+    turnDurationRecord({ uuid: 's2', ts: '2026-10-08T10:00:30.000Z', durationMs: 2000 }),
+    { type: 'user', uuid: 'u2', timestamp: '2026-10-08T10:01:00.000Z', message: { role: 'user', content: 'next' } },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.turns[0].duration_ms, 3000);
+  assert.equal(story.turns[0].duration_source, 'transcript');
+  const prompt = story.trace.events.find((e) => e.id === 'u1');
+  assert.equal(prompt.duration_ms, 3000);
+});
+
+test('turn duration falls back to wall clock up to the last finished event when the harness wrote none', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantBash({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', command: 'ls' }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:18.000Z', toolUseId: 'tu1', content: { stdout: 'a', stderr: '', interrupted: false } }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.turns[0].duration_ms, 18000);
+  assert.equal(story.turns[0].duration_source, 'derived');
+  assert.equal(story.trace.events.find((e) => e.id === 'u1').ended_at, '2026-10-08T10:00:18.000Z');
+});
+
+test('turn with no finished events and no turn_duration has an unknown duration, never 0', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    assistantBash({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', command: 'ls' }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.turns[0].duration_ms, null);
+  assert.equal(story.turns[0].duration_source, 'unknown');
+});
+
+test('a turn_duration record before any prompt is ignored', () => {
+  const records = [
+    turnDurationRecord({ uuid: 's0', ts: '2026-10-08T09:59:00.000Z', durationMs: 5000 }),
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.turns[0].duration_ms, null);
+});

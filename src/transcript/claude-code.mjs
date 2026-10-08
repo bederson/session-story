@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
-import { newEvent, finishEvent, resultStatus, eventSummary, sortEvents } from '../ir/trace.mjs';
+import { newEvent, finishEvent, resultStatus, eventSummary, sortEvents, turnDuration } from '../ir/trace.mjs';
 
 // Wrapper tags the harness injects into user-role records. None of this text
 // was typed by the human, so it is stripped before a record is considered a
@@ -349,7 +349,33 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const events = [];
   // tool_use id -> its trace event, until the tool_result arrives
   const pendingEvents = new Map();
+  const harnessMs = new Map(); // turn index -> summed system/turn_duration ms
+  const lastEnded = new Map(); // turn index -> latest ended_at among its events
+  const promptEvents = new Map(); // turn index -> its prompt event
   let currentTurn = null;
+
+  function noteEnd(event) {
+    if (!event.ended_at) return;
+    const prev = lastEnded.get(event.turn);
+    if (!prev || Date.parse(event.ended_at) > Date.parse(prev)) lastEnded.set(event.turn, event.ended_at);
+  }
+
+  // Settle a turn's duration once no more of its records can arrive.
+  function closeTurn(turn) {
+    if (!turn) return;
+    const { duration_ms, duration_source } = turnDuration({
+      harnessMs: harnessMs.get(turn.index),
+      promptAt: turn.at,
+      lastEndedAt: lastEnded.get(turn.index) || null,
+    });
+    turn.duration_ms = duration_ms;
+    turn.duration_source = duration_source;
+    const prompt = promptEvents.get(turn.index);
+    if (prompt) {
+      prompt.ended_at = lastEnded.get(turn.index) || null;
+      prompt.duration_ms = duration_ms;
+    }
+  }
   let gitBranch = null;
   // The harness writes an `ai-title` record whenever it (re)names the session;
   // the last one is the current name, and the header falls back to it when
@@ -366,7 +392,17 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       continue;
     }
 
+    // The harness reports how long the agent worked on a turn. A turn can
+    // carry several (a background agent's notification absorbed mid-turn).
+    if (record.type === 'system' && record.subtype === 'turn_duration') {
+      if (currentTurn && Number.isFinite(record.durationMs)) {
+        harnessMs.set(currentTurn.index, (harnessMs.get(currentTurn.index) || 0) + record.durationMs);
+      }
+      continue;
+    }
+
     if (isRealUserPrompt(record)) {
+      closeTurn(currentTurn);
       currentTurn = {
         index: turns.length + 1,
         id: record.uuid,
@@ -377,15 +413,19 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         bash: [],
         errors: [],
         plan: null,
+        duration_ms: null,
+        duration_source: 'unknown',
       };
       turns.push(currentTurn);
-      events.push(newEvent({
+      const promptEvent = newEvent({
         id: record.uuid,
         kind: 'prompt',
         turn: currentTurn.index,
         summary: currentTurn.prompt.length > 200 ? currentTurn.prompt.slice(0, 200) : currentTurn.prompt,
         startedAt: record.timestamp || null,
-      }));
+      });
+      events.push(promptEvent);
+      promptEvents.set(currentTurn.index, promptEvent);
       continue;
     }
 
@@ -449,6 +489,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     const event = pendingEvents.get(toolResult.toolUseId);
     if (event) {
       finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, toolResult.result));
+      noteEnd(event);
       pendingEvents.delete(toolResult.toolUseId);
     }
 
@@ -507,6 +548,8 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       pending.delete(toolResult.toolUseId);
     }
   }
+
+  closeTurn(currentTurn);
 
   const startedAt = turns.length > 0 ? turns[0].at : null;
   // The session runs until its last record, not its last prompt: a turn that
