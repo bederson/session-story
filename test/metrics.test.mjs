@@ -115,3 +115,8 @@ test('an old story with no trace gets nulls for trace-derived counts, numbers fo
   assert.deepEqual(m.reads, { files_read: null, tool_calls: null });
   assert.equal(m.code.files_changed, 0);
 });
+
+test('validationState reports only the first line of a multi-line last command, capped at 200 characters', () => {
+  assert.equal(validationState([run("python3 - <<'EOF'\nprint(1)\nEOF\nnpm test", 'ok')]).last_command, "python3 - <<'EOF'");
+  assert.equal(validationState([run(`npm test ${'x'.repeat(300)}`, 'ok')]).last_command.length, 200);
+});

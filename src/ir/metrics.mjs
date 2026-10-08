@@ -18,6 +18,12 @@ export const METRIC_GROUPS = ['execution', 'code', 'validation', 'reads', 'usage
 const VALIDATION_CATEGORIES = new Set(['test', 'lint', 'build']);
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep']);
 
+/** A command's first line, capped like an event summary, for display. */
+function firstLine(command) {
+  const line = String(command || '').split('\n')[0].trim();
+  return line.length > 200 ? line.slice(0, 200) : line;
+}
+
 export function normalizeCommand(command) {
   return String(command || '').replace(/\s+/g, ' ').replace(/;\s*$/, '').trim();
 }
@@ -72,7 +78,7 @@ export function validationState(runs) {
     passed: v.filter((r) => r.status === 'ok').length,
     failed: v.filter((r) => r.status === 'error').length,
     final_state,
-    last_command: last ? last.command : null,
+    last_command: last ? firstLine(last.command) : null,
   };
 }
 
