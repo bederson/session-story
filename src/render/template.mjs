@@ -507,12 +507,20 @@ const LIBRARY_SCRIPT = `
   var sessions = window.SESSION_STORY_LIBRARY;
   if (!nav || !Array.isArray(sessions) || !sessions.length) return;
 
+  // Last active (matching the list order), in the viewer's local time.
+  function localStamp(iso) {
+    var d = new Date(iso || '');
+    if (isNaN(d.getTime())) return '';
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '  ';
+  }
   var select = nav.querySelector('.lib-switch');
   var current = nav.dataset.sessionId;
   sessions.forEach(function (s) {
     var option = document.createElement('option');
     option.value = s.file;
-    option.textContent = (s.started_at ? s.started_at.slice(0, 16).replace('T', ' ') + '  ' : '') + (s.title || s.id);
+    option.textContent = localStamp(s.ended_at || s.started_at) + (s.title || s.id);
     if (s.id === current) option.selected = true;
     select.appendChild(option);
   });

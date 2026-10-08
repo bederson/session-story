@@ -213,7 +213,7 @@ test('renderIndexPage offers time period filters, hidden until the script runs, 
     assert.match(html, new RegExp(`data-period="${key}"`));
   }
   assert.match(html, /data-period="all" aria-pressed="true">All time</);
-  assert.match(html, /data-started="2026-09-14T10:32:00\.000Z"/);
+  assert.match(html, /data-active="2026-09-14T11:02:00\.000Z"/);
 });
 
 test('renderIndexPage renders no period filter for an empty library', () => {

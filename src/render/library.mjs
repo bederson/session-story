@@ -108,6 +108,7 @@ export function renderSessionsJs(entries) {
     id: e.id,
     title: e.title,
     started_at: e.started_at,
+    ended_at: e.ended_at || null,
     outcome: e.outcome,
     totals: e.totals,
   }));
@@ -163,7 +164,7 @@ body { padding-bottom: 64px; }
 const INDEX_SCRIPT = THEME_TOGGLE_JS + `
 (function () {
   // Filtering is a substring match over each card's own text plus a time
-  // period over its start time, so the index needs no data beyond what it
+  // period over when it was last active, so the index needs no data beyond what it
   // already rendered. The rollup line is recomputed from the shown cards.
   var input = document.querySelector('.lib-search input');
   var periodBar = document.querySelector('.lib-periods');
@@ -191,7 +192,7 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   }
   function inPeriod(card, win) {
     if (!win) return true;
-    var t = Date.parse(card.dataset.started || '');
+    var t = Date.parse(card.dataset.active || '');
     if (isNaN(t)) return false;
     return t >= win[0].getTime() && (!win[1] || t < win[1].getTime());
   }
@@ -321,7 +322,7 @@ function sessionCard(entry) {
 
   return (
     `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}"` +
-    ` data-started="${escapeHtml(entry.started_at || '')}" data-turns="${totals.turns || 0}"` +
+    ` data-active="${escapeHtml(lastActive(entry))}" data-turns="${totals.turns || 0}"` +
     ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
     ` data-cost="${dataNum(usage.cost_usd)}">` +
