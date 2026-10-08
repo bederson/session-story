@@ -182,3 +182,7 @@ test('renderEdit shows a shell diff shared with another turn, and says it is sha
   assert.match(html, /so did turn 4/);
   assert.doesNotMatch(html, /outside the project/);
 });
+
+test('renderEdit puts the edit id on its header so the Trace lens can jump to it', () => {
+  assert.match(renderEdit({ id: 'tu3', tool: 'Edit', rel: 'src/a.ts', result: 'ok', hunks: [], stats: { added: 0, removed: 0 } }), /<div class="edit-header" data-edit-id="tu3">/);
+});

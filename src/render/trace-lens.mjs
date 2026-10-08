@@ -11,6 +11,7 @@
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { statTile, plural } from './lenses.mjs';
+import { msBetween } from '../ir/trace.mjs';
 
 const USAGE_SOURCE_LABEL = {
   'cost-state': "Claude Code's session cost record",
@@ -163,4 +164,176 @@ export function renderMetrics(story) {
     ? `<p class="trace-env">${escapeHtml(env.name || 'Agent')} ${escapeHtml(env.version || 'version not recorded')}</p>`
     : '';
   return `<aside class="trace-metrics">${groups.join('')}${envLine}</aside>`;
+}
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
+const VALIDATION = new Set(['test', 'lint', 'build']);
+const FAILURE = new Set(['error', 'rejected', 'interrupted']);
+export const TRACE_FILTERS = [
+  ['all', 'All'], ['prompt', 'Prompts'], ['tool', 'Tools'], ['command', 'Commands'],
+  ['edit', 'Edits'], ['test', 'Tests'], ['error', 'Errors'], ['subagent', 'Subagents'],
+];
+const STATUS_ICON = { ok: 'check', error: 'cross', rejected: 'cross', interrupted: 'warning', unknown: 'clock' };
+const STATUS_LABEL = { ok: 'ok', error: 'failed', rejected: 'rejected by the user', interrupted: 'interrupted', unknown: 'no result recorded' };
+const DURATION_SOURCE_LABEL = { transcript: 'reported by Claude Code', derived: 'estimated from timestamps', unknown: 'not recorded' };
+const ENDED_LABEL = {
+  result: 'its tool result',
+  notification: 'completion notice',
+  subagent_transcript: 'last record of its own transcript (provisional)',
+};
+
+/** The filters an event belongs to, space-separated for data-groups. */
+export function eventGroups(event) {
+  if (event.kind === 'prompt') return 'prompt';
+  const groups = ['tool'];
+  if (event.tool === 'Bash') groups.push('command');
+  if (EDIT_TOOLS.has(event.tool)) groups.push('edit');
+  if (VALIDATION.has(event.category)) groups.push('test');
+  if (event.kind === 'subagent' || event.parent_id) groups.push('subagent');
+  if (event.status === 'error' || event.status === 'rejected') groups.push('error');
+  if (FAILURE.has(event.status)) groups.push('failure');
+  return groups.join(' ');
+}
+
+function indexTurns(turns) {
+  const index = { bash: new Map(), errors: new Map(), edits: new Map(), byIndex: new Map() };
+  for (const turn of turns || []) {
+    index.byIndex.set(turn.index, turn);
+    for (const b of turn.bash || []) index.bash.set(b.id, b);
+    for (const e of turn.errors || []) index.errors.set(e.id, e);
+    for (const e of turn.edits || []) if (e.id) index.edits.set(e.id, e);
+  }
+  return index;
+}
+
+function jumpButton(turn, label, editId) {
+  const edit = editId ? ` data-jump-edit="${escapeHtml(editId)}"` : '';
+  return `<button type="button" class="trace-jump"${edit} data-turn="${turn}">${label}</button>`;
+}
+
+function renderDetail(event, ctx) {
+  const latency = formatLatency(event.duration_ms);
+  const rows = [
+    row('Turn', `${event.turn} ${jumpButton(event.turn, 'Open in Review')}`),
+    row('Status', escapeHtml(STATUS_LABEL[event.status] || event.status)),
+    row('Started', event.started_at ? `<time>${escapeHtml(event.started_at)}</time>` : na()),
+    row('Ended', event.ended_at ? `<time>${escapeHtml(event.ended_at)}</time>` : na()),
+    row('Latency', latency
+      ? `${latency} <span class="trace-note">result time minus call time, includes permission and hook wait</span>`
+      : na()),
+    row('Source', escapeHtml(event.agent_id ? `subagent transcript (${event.agent_id})` : 'session transcript')),
+  ];
+  if (event.kind === 'subagent') {
+    rows.push(row('Ended by', ENDED_LABEL[event.ended_source] || na()));
+    rows.push(row('Tool calls', String(ctx.childCount.get(event.id) || 0)));
+    const u = event.usage;
+    rows.push(row('Tokens', u
+      ? `${formatTokens(u.output_tokens)} out, ${formatTokens(inputWithCache(u))} in incl. cache`
+      : na()));
+  }
+  const bash = ctx.turns.bash.get(event.id);
+  if (bash) {
+    rows.push(row('Exit code', isNum(bash.exit_code) ? String(bash.exit_code) : na()));
+    if (bash.ok === false && bash.output_tail) {
+      rows.push(row('Output', `<pre class="trace-output">${escapeHtml(bash.output_tail)}</pre>`));
+    }
+  }
+  const error = ctx.turns.errors.get(event.id);
+  if (error) {
+    rows.push(row('Error', `<span class="error-message">${escapeHtml(error.message)}</span>`));
+    if (error.resolution) rows.push(row('Resolution', escapeHtml(error.resolution)));
+  }
+  const edit = ctx.turns.edits.get(event.id);
+  if (edit) {
+    const stats = edit.stats
+      ? ` <span class="edit-stats"><span class="add">+${edit.stats.added}</span><span class="del">−${edit.stats.removed}</span></span>`
+      : '';
+    rows.push(row('Diff', jumpButton(event.turn, 'View diff in Review', edit.id) + stats));
+  }
+  return `<dl class="trace-detail">${rows.join('')}</dl>`;
+}
+
+function renderEvent(event, ctx) {
+  const time = ctx.base ? formatElapsed(msBetween(ctx.base, event.started_at)) : '';
+  if (event.kind === 'prompt') {
+    const turn = ctx.turns.byIndex.get(event.turn) || {};
+    const source = DURATION_SOURCE_LABEL[turn.duration_source] || 'not recorded';
+    return (
+      `<li class="trace-event trace-prompt" data-groups="prompt" data-turn="${event.turn}">` +
+      `<div class="trace-prompt-row">` +
+      `<span class="trace-time">${time}</span>` +
+      `<span class="trace-turn">Turn ${event.turn}</span>` +
+      `<span class="trace-prompt-text">${escapeHtml(turn.summary || event.summary || '')}</span>` +
+      `<span class="trace-dur" title="${source}">${formatLatency(turn.duration_ms) || '—'}</span>` +
+      jumpButton(event.turn, 'Open in Review') +
+      `</div></li>`
+    );
+  }
+  const label = event.kind === 'subagent'
+    ? (event.agent_type ? `Agent · ${event.agent_type}` : 'Agent')
+    : (event.tool || 'tool');
+  const category = event.category && event.category !== 'other'
+    ? `<span class="badge trace-cat">${escapeHtml(event.category)}</span>`
+    : '';
+  const status = escapeHtml(event.status);
+  const child = event.parent_id ? ' trace-child' : '';
+  return (
+    `<li class="trace-event trace-${escapeHtml(event.kind)}${child}" data-groups="${eventGroups(event)}" data-status="${status}">` +
+    `<details><summary>` +
+    `<span class="trace-time">${time}</span>` +
+    `<span class="trace-status st-${status}" title="${escapeHtml(STATUS_LABEL[event.status] || event.status)}">${icon(STATUS_ICON[event.status] || 'warning')}</span>` +
+    `<span class="badge trace-tool">${escapeHtml(label)}</span>` +
+    category +
+    `<code class="trace-summary">${escapeHtml(event.summary || '')}</code>` +
+    `<span class="trace-dur">${formatLatency(event.duration_ms) || '—'}</span>` +
+    `</summary>` +
+    renderDetail(event, ctx) +
+    `</details></li>`
+  );
+}
+
+function countGroups(events) {
+  const counts = { all: events.length, failure: 0 };
+  for (const [key] of TRACE_FILTERS) if (key !== 'all') counts[key] = 0;
+  for (const event of events) {
+    for (const g of eventGroups(event).split(' ')) counts[g] = (counts[g] || 0) + 1;
+  }
+  return counts;
+}
+
+function renderFilters(events) {
+  const counts = countGroups(events);
+  const buttons = TRACE_FILTERS.map(([key, label]) => (
+    `<button type="button" class="trace-filter" data-trace-filter="${key}" aria-pressed="${key === 'all'}">` +
+    `${label} <span class="trace-count">${counts[key]}</span></button>`
+  )).join('');
+  return (
+    `<div class="trace-filters" role="group" aria-label="Filter events">${buttons}` +
+    `<button type="button" class="trace-failures" aria-pressed="false">${icon('warning')}<span>Failures only</span> ` +
+    `<span class="trace-count">${counts.failure}</span></button></div>`
+  );
+}
+
+/**
+ * @param {object} story - Story IR with `trace` (and usually `metrics`)
+ * @returns {string}
+ */
+export function renderTraceLens(story) {
+  const events = hasTrace(story) ? story.trace.events : [];
+  const firstDated = events.find((e) => e.started_at);
+  const ctx = {
+    turns: indexTurns(story.turns),
+    base: (story.session && story.session.started_at) || (firstDated && firstDated.started_at) || null,
+    childCount: new Map(),
+  };
+  for (const e of events) if (e.parent_id) ctx.childCount.set(e.parent_id, (ctx.childCount.get(e.parent_id) || 0) + 1);
+  const timeline = events.length
+    ? `<ol class="trace-timeline">${events.map((e) => renderEvent(e, ctx)).join('')}</ol>`
+    : `<p class="report-empty">No events recorded.</p>`;
+  return (
+    `<div class="trace-lens">` +
+    renderScorecard(story.metrics) +
+    `<div class="trace-body"><div class="trace-main">${renderFilters(events)}${timeline}</div>${renderMetrics(story)}</div>` +
+    `</div>`
+  );
 }

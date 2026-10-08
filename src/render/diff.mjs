@@ -176,7 +176,7 @@ export function renderEdit(edit, opts = {}) {
   // The file key lets a review-lens file chip find this block and scroll to it.
   const fileAttr = ` data-file="${escapeHtml(edit.rel)}"`;
   const header =
-    `<div class="edit-header">` +
+    `<div class="edit-header" data-edit-id="${escapeHtml(edit.id || '')}">` +
     `${icon('code')}` +
     `<span class="edit-file">${escapeHtml(edit.rel)}</span>` +
     badges.join('') +
