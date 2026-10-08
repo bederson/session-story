@@ -635,3 +635,42 @@ test('a turn_duration record before any prompt is ignored', () => {
   const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
   assert.equal(story.turns[0].duration_ms, null);
 });
+
+test('each turn carries its deduped usage, and the story its environment', () => {
+  const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 100, cache_read_input_tokens: 200 };
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', version: '2.1.288', message: { role: 'user', content: 'go' } },
+    assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Read', input: { file_path: '/proj/a.js' }, messageId: 'm1', usage, model: 'claude-opus-5-5', version: '2.1.288' }),
+    { type: 'assistant', uuid: 'a1b', timestamp: '2026-10-08T10:00:01.100Z', version: '2.1.288',
+      message: { id: 'm1', role: 'assistant', model: 'claude-opus-5-5', usage, content: [{ type: 'text', text: 'reading' }] } },
+    { type: 'user', uuid: 'u2', timestamp: '2026-10-08T10:01:00.000Z', message: { role: 'user', content: 'again' } },
+    assistantTool({ uuid: 'a2', ts: '2026-10-08T10:01:01.000Z', id: 'tu2', name: 'Read', input: { file_path: '/proj/b.js' }, messageId: 'm2', usage: { input_tokens: 1, output_tokens: 2 }, model: 'claude-haiku-4-5-20251001', version: '2.1.289' }),
+    { type: 'user', uuid: 'u3', timestamp: '2026-10-08T10:02:00.000Z', message: { role: 'user', content: 'unanswered' } },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.deepEqual(story.turns[0].usage, { input_tokens: 10, output_tokens: 5, cache_read_tokens: 200, cache_creation_tokens: 100, api_calls: 1, models: ['claude-opus-5-5'], complete: true });
+  assert.equal(story.turns[1].usage.models[0], 'claude-haiku-4-5-20251001');
+  assert.equal(story.turns[2].usage, null);
+  assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: '2.1.289' }, models: ['claude-haiku-4-5-20251001', 'claude-opus-5-5'] });
+});
+
+test('a cost-state record lands on trace.cost_states and is not an event', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    { type: 'cost-state', sessionId: 's1', totalCostUSD: 0.05, totalAPIDuration: 9000, totalToolDuration: 11000,
+      modelUsage: { 'claude-opus-5-5': { inputTokens: 30, outputTokens: 65, cacheReadInputTokens: 1100, cacheCreationInputTokens: 100, costUSD: 0.05 } },
+      hasUnknownModelCost: false },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.trace.events.length, 1);
+  assert.equal(story.trace.cost_states.length, 1);
+  assert.equal(story.trace.cost_states[0].total_cost_usd, 0.05);
+  assert.equal(story.trace.cost_states[0].total_api_duration_ms, 9000);
+});
+
+test('environment has a null version and no models when the records carry none', () => {
+  const story = buildStory([
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+  ], { sessionId: 's1', cwd: '/proj' });
+  assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: null }, models: [] });
+});

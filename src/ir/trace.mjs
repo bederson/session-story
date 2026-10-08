@@ -107,3 +107,51 @@ export function sortEvents(events) {
   keyed.sort((a, b) => (a.t - b.t) || (a.i - b.i));
   return keyed.map((k) => k.event);
 }
+
+/** Accumulator for message.usage across the assistant records of one turn (or one subagent). */
+export function newUsageAcc() {
+  return { byMessage: new Map(), noUsage: new Set(), models: new Set() };
+}
+
+/**
+ * Claude Code writes one assistant record per content block, and every
+ * record of the same API call repeats the identical usage object, so the
+ * usage is keyed by message.id and counted once.
+ */
+export function noteUsage(acc, record) {
+  if (!record || record.type !== 'assistant' || !record.message) return;
+  const { id, usage, model } = record.message;
+  if (typeof model === 'string' && model) acc.models.add(model);
+  const key = id || record.uuid;
+  if (!usage || typeof usage !== 'object') {
+    acc.noUsage.add(key);
+    return;
+  }
+  acc.byMessage.set(key, usage);
+}
+
+/** Totals for the accumulator, or null when it saw no assistant records at all. */
+export function usageTotals(acc) {
+  if (acc.byMessage.size === 0 && acc.noUsage.size === 0) return null;
+  const totals = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0 };
+  for (const u of acc.byMessage.values()) {
+    totals.input_tokens += u.input_tokens || 0;
+    totals.output_tokens += u.output_tokens || 0;
+    totals.cache_read_tokens += u.cache_read_input_tokens || 0;
+    totals.cache_creation_tokens += u.cache_creation_input_tokens || 0;
+  }
+  const complete = [...acc.noUsage].every((key) => acc.byMessage.has(key));
+  return { ...totals, api_calls: acc.byMessage.size, models: [...acc.models].sort(), complete };
+}
+
+/** The session-level totals Claude Code writes in a `cost-state` record at exit. */
+export function pickCostState(record) {
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    total_cost_usd: num(record.totalCostUSD),
+    total_api_duration_ms: num(record.totalAPIDuration),
+    total_tool_duration_ms: num(record.totalToolDuration),
+    model_usage: record.modelUsage && typeof record.modelUsage === 'object' ? record.modelUsage : {},
+    has_unknown_model_cost: !!record.hasUnknownModelCost,
+  };
+}

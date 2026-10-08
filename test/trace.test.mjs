@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   msBetween, newEvent, finishEvent, resultStatus, eventSummary, turnDuration, sortEvents,
+  newUsageAcc, noteUsage, usageTotals, pickCostState,
 } from '../src/ir/trace.mjs';
 
 test('msBetween returns the positive difference in ms, or null when either timestamp is missing or unparseable', () => {
@@ -64,4 +65,32 @@ test('sortEvents orders by started_at, keeps ties in insertion order, and keeps 
   const c = newEvent({ id: 'c', kind: 'tool', turn: 1, startedAt: null });
   const d = newEvent({ id: 'd', kind: 'tool', turn: 1, startedAt: '2026-10-08T10:00:01.000Z' });
   assert.deepEqual(sortEvents([a, b, c, d]).map((e) => e.id), ['b', 'c', 'd', 'a']);
+});
+
+test('usage is counted once per API call even though each content block is its own record', () => {
+  const usage = { input_tokens: 2, output_tokens: 278, cache_creation_input_tokens: 18435, cache_read_input_tokens: 25520 };
+  const acc = newUsageAcc();
+  noteUsage(acc, { type: 'assistant', uuid: 'a1', message: { id: 'msg_1', model: 'claude-opus-5-5', usage } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a2', message: { id: 'msg_1', model: 'claude-opus-5-5', usage } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a3', message: { id: 'msg_2', model: 'claude-opus-5-5', usage: { input_tokens: 1, output_tokens: 22 } } });
+  assert.deepEqual(usageTotals(acc), {
+    input_tokens: 3, output_tokens: 300, cache_read_tokens: 25520, cache_creation_tokens: 18435,
+    api_calls: 2, models: ['claude-opus-5-5'], complete: true,
+  });
+});
+
+test('usage is incomplete when an API call carried no usage, and null when there were no assistant records', () => {
+  const acc = newUsageAcc();
+  noteUsage(acc, { type: 'assistant', uuid: 'a1', message: { id: 'msg_1', model: 'claude-opus-5-5' } });
+  assert.equal(usageTotals(acc).complete, false);
+  assert.equal(usageTotals(newUsageAcc()), null);
+  noteUsage(acc, { type: 'user', uuid: 'u1', message: { role: 'user', content: 'x' } });
+  assert.equal(usageTotals(acc).api_calls, 0);
+});
+
+test('pickCostState keeps the totals and per-model usage, with nulls for missing numbers', () => {
+  assert.deepEqual(pickCostState({ type: 'cost-state', totalCostUSD: 0.75, modelUsage: { 'claude-opus-5-5': { inputTokens: 1 } } }), {
+    total_cost_usd: 0.75, total_api_duration_ms: null, total_tool_duration_ms: null,
+    model_usage: { 'claude-opus-5-5': { inputTokens: 1 } }, has_unknown_model_cost: false,
+  });
 });

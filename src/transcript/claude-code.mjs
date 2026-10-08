@@ -7,7 +7,10 @@
 import path from 'node:path';
 import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
-import { newEvent, finishEvent, resultStatus, eventSummary, sortEvents, turnDuration } from '../ir/trace.mjs';
+import {
+  newEvent, finishEvent, resultStatus, eventSummary, sortEvents, turnDuration,
+  newUsageAcc, noteUsage, usageTotals, pickCostState,
+} from '../ir/trace.mjs';
 
 // Wrapper tags the harness injects into user-role records. None of this text
 // was typed by the human, so it is stripped before a record is considered a
@@ -352,6 +355,10 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const harnessMs = new Map(); // turn index -> summed system/turn_duration ms
   const lastEnded = new Map(); // turn index -> latest ended_at among its events
   const promptEvents = new Map(); // turn index -> its prompt event
+  const usageAcc = new Map(); // turn index -> usage accumulator
+  const costStates = [];
+  const models = new Set();
+  let version = null;
   let currentTurn = null;
 
   function noteEnd(event) {
@@ -370,6 +377,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     });
     turn.duration_ms = duration_ms;
     turn.duration_source = duration_source;
+    turn.usage = usageAcc.has(turn.index) ? usageTotals(usageAcc.get(turn.index)) : null;
     const prompt = promptEvents.get(turn.index);
     if (prompt) {
       prompt.ended_at = lastEnded.get(turn.index) || null;
@@ -390,6 +398,19 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     if (record.type === 'ai-title' && typeof record.aiTitle === 'string' && record.aiTitle.trim()) {
       aiTitle = record.aiTitle.trim();
       continue;
+    }
+
+    if (typeof record.version === 'string' && record.version) version = record.version;
+    if (record.type === 'cost-state') {
+      costStates.push(pickCostState(record));
+      continue;
+    }
+    if (record.type === 'assistant') {
+      if (record.message && typeof record.message.model === 'string') models.add(record.message.model);
+      if (currentTurn) {
+        if (!usageAcc.has(currentTurn.index)) usageAcc.set(currentTurn.index, newUsageAcc());
+        noteUsage(usageAcc.get(currentTurn.index), record);
+      }
     }
 
     // The harness reports how long the agent worked on a turn. A turn can
@@ -415,6 +436,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         plan: null,
         duration_ms: null,
         duration_source: 'unknown',
+        usage: null,
       };
       turns.push(currentTurn);
       const promptEvent = newEvent({
@@ -583,7 +605,8 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       dependencies: { manifests: [], installs: [], config_files: [] },
       git: null,
     },
-    trace: { events: sortEvents(events), cost_states: [] },
+    trace: { events: sortEvents(events), cost_states: costStates },
+    environment: { agent: { name: 'Claude Code', version }, models: [...models].sort() },
   };
 }
 
