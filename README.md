@@ -80,8 +80,11 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
 | **Story**  | A stakeholder who wants the gist | A narrative card per turn, code collapsed by default                                          |
 | **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |
+| **Trace**  | Agent and tool developers | Execution timeline of prompts, tool calls and subagents with status and latency; filters; deterministic metrics, token usage, and cost when Claude Code recorded it |
 
-Two toggles in the nav apply across all three views, and persist across visits:
+The Trace tab appears for stories extracted by this version; an older `story.json` renders without it.
+
+Two toggles in the nav apply across the views, and persist across visits:
 
 - **Project files only** (on by default) — hides edits to files outside the session's project directory (scratch files, temp drafts). Every count in the header, timeline, and file tree switches with it; turn off to see what's hidden and why.
 - **Full file** (off by default, Review and Diff) — shows each change spliced into the complete source file it came from, instead of just the changed hunk. File state is reconstructed from the transcript where possible; a note marks a view rebuilt from the file's current disk contents as approximate.
@@ -89,7 +92,7 @@ Two toggles in the nav apply across all three views, and persist across visits:
 ## Why Session Story
 
 - **Reconstructs intent, not just diffs** — links every edit back to the prompt that caused it, in the order it happened.
-- **Four audiences, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened"; no server needed to view any of them.
+- **Five views, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened", Trace for whoever builds or debugs the agent; no server needed to view any of them.
 - **Zero runtime dependencies** — pure Node.js, inline CSS/JS, works over `file://`.
 - **Typed IR, validated before render** — `story.json` follows [`schemas/story.schema.json`](schemas/story.schema.json); `validate` checks its shape and, in `--strict` mode, that every turn and the session have a summary.
 - **Honest about blind spots** — a tool call whose result never arrived is shown as "edit attempted, result unknown" instead of causing an error, and untracked shell edits are disclosed in the page header rather than silently dropped.
@@ -134,7 +137,7 @@ Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG
 npm test
 ```
 
-262 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
+281 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
 
 ## License
 

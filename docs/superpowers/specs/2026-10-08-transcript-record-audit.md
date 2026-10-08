@@ -66,3 +66,18 @@ Two real sessions were extracted with the Phase 1 code, validated and rendered.
 - `classifyCommand` classifies a line by any segment it contains, so a scripted heredoc that ends in `npm test` counts as a test command. Validation counts therefore include such compound lines.
 - A notification that arrives after the next prompt closes its agent event but cannot extend the already-closed earlier turn's derived duration.
 - When a story joins several sessions across `/clear` and only some have a `cost-state`, `metrics.usage` uses the cost-state totals and marks `complete: false`.
+
+## 6. Phase 2 inspection (2026-10-08)
+
+This session's story (`894d22cb`, 168 trace events at render time) was rendered with the Trace tab.
+
+**Verified without a browser.**
+- The page has five tabs. Both inline scripts parse, checked by compiling each one with `new Function`.
+- All 12 "View diff in Review" buttons point at an edit whose `.edit-header[data-edit-id]` is inside the matching Review turn panel.
+- Size: the page is 4.57 MB with the Trace lens and 4.36 MB without it. The lens adds 214 KB, about 1.3 KB per event, which is more than the plan's estimate of about 0.5 KB. Most of it is the expandable detail of each event. It is still small next to the pre-rendered diffs. If it becomes a problem for very long sessions, the detail rows are the place to trim.
+
+**Not verified: the in-browser behavior.** The Chrome extension was not connected, and headless Chrome hangs in this environment even on a three-line page. These still need a manual check in a browser over `file://`:
+- Filters and Failures only narrow the list.
+- Jumps land on the edit and flash it.
+- An edit outside the project switches the scope toggle on.
+- The light and dark themes, a phone-width layout, and the console being free of errors.

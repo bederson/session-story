@@ -95,10 +95,11 @@ session" / "/story".
    node bin/story.mjs render <scratch>/story.json --open
    ```
    This writes a self-contained HTML file (no server, no dependencies)
-   with four switchable views — Review (timeline + diff, for you), Diff
+   with five switchable views — Review (timeline + diff, for you), Diff
    (file tree, GitHub-style, for a teammate), Story (narrative cards, for
    a stakeholder), Report (plan, commands, tests, errors, decisions,
-   dependencies, git state, and outcome) — and opens it.
+   dependencies, git state, and outcome), and Trace (execution timeline,
+   metrics and usage, for agent developers) — and opens it.
 
    The page lands in the project's `.session-stories/` library as
    `<date>-<session-id>-<slug>.html`, so each session keeps its own file
@@ -111,7 +112,8 @@ session" / "/story".
 
 5. Report both paths — the story page and `.session-stories/index.html` —
    and the header numbers (turns, files, lines added/removed, outcome) to
-   the user.
+   the user. If the story has token usage, report output tokens and, when
+   recorded, the cost.
 
 ## Limits
 
