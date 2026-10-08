@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { slugify, locateSession, locateChain } from '../src/transcript/locate.mjs';
+import { slugify, locateSession, locateChain, subagentMetaPath } from '../src/transcript/locate.mjs';
 
 test('slugify turns an absolute cwd into the ~/.claude/projects folder slug', () => {
   assert.equal(slugify('/Users/nalaj/Development/AI/metafyl'), '-Users-nalaj-Development-AI-metafyl');
@@ -183,4 +183,8 @@ test('locateChain does not loop when two transcripts point at each other', async
   const chain = await locateChain({ claudeDir, cwd, sessionId: 'b' });
 
   assert.deepEqual(chain.map((c) => c.sessionId), ['a', 'b']);
+});
+
+test('subagent meta path is the transcript path with .meta.json in place of .jsonl', () => {
+  assert.equal(subagentMetaPath('/x/subagents/agent-ab12.jsonl'), '/x/subagents/agent-ab12.meta.json');
 });

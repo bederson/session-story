@@ -3,7 +3,7 @@ import { writeFile, readFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import { parseTranscript } from '../src/transcript/parse.mjs';
-import { locateSession, locateSubagents, locateChain, defaultClaudeDir } from '../src/transcript/locate.mjs';
+import { locateSession, locateSubagents, locateChain, defaultClaudeDir, subagentMetaPath } from '../src/transcript/locate.mjs';
 import { buildStory, refreshDerived } from '../src/transcript/claude-code.mjs';
 import { fillBashEditsFromGit } from '../src/ir/git-edits.mjs';
 import { fillBasesFromDisk } from '../src/ir/disk-base.mjs';
@@ -150,7 +150,13 @@ async function cmdExtract(opts) {
     const subagentPaths = await locateSubagents({ claudeDir, cwd, sessionId: link.sessionId });
     for (const [agentId, filePath] of Object.entries(subagentPaths)) {
       const sub = await parseTranscript(filePath);
-      subagents[agentId] = sub.records;
+      let meta = null;
+      try {
+        meta = JSON.parse(await readFile(subagentMetaPath(filePath), 'utf8'));
+      } catch {
+        meta = null; // older harness versions wrote no meta file
+      }
+      subagents[agentId] = { records: sub.records, meta };
     }
   }
 

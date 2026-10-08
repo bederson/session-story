@@ -9,7 +9,7 @@ import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
 import {
   newEvent, finishEvent, resultStatus, eventSummary, sortEvents, turnDuration,
-  newUsageAcc, noteUsage, usageTotals, pickCostState,
+  newUsageAcc, noteUsage, usageTotals, pickCostState, parseTaskNotifications, msBetween,
 } from '../ir/trace.mjs';
 
 // Wrapper tags the harness injects into user-role records. None of this text
@@ -170,24 +170,43 @@ function pushError(turnRef, { id, tool, at, toolUseResult, block, target }) {
 }
 
 /**
- * Extract file edits from a subagent's own flat record stream (no turns:
- * a subagent's records form one sequence, all attributed to the turn that
- * spawned it).
+ * Extract file edits, commands, errors, trace events and token usage from a
+ * subagent's own flat record stream (no turns: a subagent's records form one
+ * sequence, all attributed to the turn that spawned it). Its tool events
+ * point at the Agent tool_use that launched it through `parent_id`.
  */
-function extractSubagentEdits(subRecords, cwd, agentId) {
+function extractSubagent(subRecords, cwd, agentId, { parentId = null, turnIndex = null } = {}) {
   const edits = [];
   const bash = [];
   const errors = [];
+  const events = [];
   const pending = new Map();
   const pendingBash = new Map();
   const pendingAny = new Map();
+  const pendingEvents = new Map();
+  const usage = newUsageAcc();
   // A container with an `errors` array so pushError can treat it exactly
   // like a turn; the entries end up on the spawning turn's own list.
   const errorSink = { errors };
 
   for (const record of subRecords) {
+    noteUsage(usage, record);
     for (const block of allToolUseCalls(record)) {
       pendingAny.set(block.id, { name: block.name, input: block.input });
+      const command = block.name === BASH_TOOL ? ((block.input && block.input.command) || '') : null;
+      const event = newEvent({
+        id: block.id,
+        kind: 'tool',
+        turn: turnIndex,
+        parentId,
+        tool: block.name,
+        category: command === null ? null : classifyCommand(command),
+        summary: eventSummary(block.name, block.input, cwd),
+        startedAt: record.timestamp || null,
+        agentId,
+      });
+      events.push(event);
+      pendingEvents.set(block.id, event);
     }
 
     const shell = bashCalls(record);
@@ -206,6 +225,12 @@ function extractSubagentEdits(subRecords, cwd, agentId) {
 
     const toolResult = toolResultFor(record);
     if (!toolResult) continue;
+
+    const event = pendingEvents.get(toolResult.toolUseId);
+    if (event) {
+      finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, toolResult.result));
+      pendingEvents.delete(toolResult.toolUseId);
+    }
 
     const info = pendingAny.get(toolResult.toolUseId);
     if (toolResult.isError && info) {
@@ -245,7 +270,7 @@ function extractSubagentEdits(subRecords, cwd, agentId) {
     }
   }
 
-  return { edits, bash, errors };
+  return { edits, bash, errors, events, usage: usageTotals(usage), last_at: latestTimestamp(subRecords, null) };
 }
 
 function toolResultFor(record) {
@@ -355,6 +380,8 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const harnessMs = new Map(); // turn index -> summed system/turn_duration ms
   const lastEnded = new Map(); // turn index -> latest ended_at among its events
   const promptEvents = new Map(); // turn index -> its prompt event
+  // Agent tool_use id -> its subagent event, while a background agent runs
+  const awaitingAgents = new Map();
   const usageAcc = new Map(); // turn index -> usage accumulator
   const costStates = [];
   const models = new Set();
@@ -412,6 +439,22 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         noteUsage(usageAcc.get(currentTurn.index), record);
       }
     }
+
+    // A background agent's completion arrives later as a <task-notification>
+    // block, in a queue-operation record or folded into a user record.
+    const notificationText = record.type === 'queue-operation'
+      ? record.content
+      : (record.type === 'user' && record.message && typeof record.message.content === 'string'
+        ? record.message.content
+        : null);
+    for (const note of parseTaskNotifications(notificationText)) {
+      const agentEvent = awaitingAgents.get(note.toolUseId);
+      if (!agentEvent) continue;
+      finishEvent(agentEvent, record.timestamp || null, note.status === 'completed' ? 'ok' : 'error');
+      agentEvent.ended_source = 'notification';
+      noteEnd(agentEvent);
+    }
+    if (record.type === 'queue-operation') continue;
 
     // The harness reports how long the agent worked on a turn. A turn can
     // carry several (a background agent's notification absorbed mid-turn).
@@ -510,8 +553,24 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
 
     const event = pendingEvents.get(toolResult.toolUseId);
     if (event) {
-      finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, toolResult.result));
-      noteEnd(event);
+      const r = toolResult.result;
+      if (event.kind === 'subagent') {
+        event.agent_id = (r && typeof r === 'object' && r.agentId) || null;
+        event.agent_type = null;
+        event.usage = null;
+        event.ended_source = null;
+        if (r && typeof r === 'object' && r.isAsync) {
+          // Launched in the background: it ends when its notification arrives.
+          awaitingAgents.set(event.id, event);
+        } else {
+          finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, r));
+          event.ended_source = 'result';
+          noteEnd(event);
+        }
+      } else {
+        finishEvent(event, record.timestamp || null, resultStatus(toolResult.isError, r));
+        noteEnd(event);
+      }
       pendingEvents.delete(toolResult.toolUseId);
     }
 
@@ -538,11 +597,33 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       const spawningTurn = pendingAgents.get(toolResult.toolUseId);
       const r = toolResult.result || {};
       const agentId = r.agentId;
-      const subRecords = (subagents && subagents[agentId]) || [];
-      const sub = extractSubagentEdits(subRecords, cwd, agentId);
+      // Each subagent is either its record array (older callers) or
+      // { records, meta } with the harness's agent-<id>.meta.json.
+      const entry = (subagents && subagents[agentId]) || null;
+      const subRecords = Array.isArray(entry) ? entry : (entry && entry.records) || [];
+      const meta = Array.isArray(entry) ? null : (entry && entry.meta) || null;
+      const sub = extractSubagent(subRecords, cwd, agentId, {
+        parentId: toolResult.toolUseId,
+        turnIndex: spawningTurn.index,
+      });
       spawningTurn.edits.push(...sub.edits);
       spawningTurn.bash.push(...sub.bash);
       spawningTurn.errors.push(...sub.errors);
+      events.push(...sub.events);
+      for (const child of sub.events) noteEnd(child);
+      for (const model of (sub.usage && sub.usage.models) || []) models.add(model);
+      if (event && event.kind === 'subagent') {
+        event.agent_type = (meta && meta.agentType) || null;
+        event.usage = sub.usage;
+        // Until a notification says otherwise, the agent ran at least until
+        // its own transcript's last record.
+        if (event.ended_at === null && sub.last_at) {
+          event.ended_at = sub.last_at;
+          event.duration_ms = msBetween(event.started_at, sub.last_at);
+          event.ended_source = 'subagent_transcript';
+          noteEnd(event);
+        }
+      }
       pendingAgents.delete(toolResult.toolUseId);
     }
 

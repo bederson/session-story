@@ -155,3 +155,32 @@ export function pickCostState(record) {
     has_unknown_model_cost: !!record.hasUnknownModelCost,
   };
 }
+
+const NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/g;
+
+function tagText(block, name) {
+  const match = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(block);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * The harness tells the main session a background agent finished by
+ * injecting a <task-notification> block (into a queue-operation record or a
+ * user record). Its <tool-use-id> is the Agent tool_use that launched it.
+ */
+export function parseTaskNotifications(text) {
+  if (typeof text !== 'string') return [];
+  const out = [];
+  for (const match of text.matchAll(NOTIFICATION_RE)) {
+    const block = match[1];
+    const toolUseId = tagText(block, 'tool-use-id');
+    if (!toolUseId) continue;
+    const duration = tagText(block, 'duration_ms');
+    out.push({
+      toolUseId,
+      status: tagText(block, 'status') || 'completed',
+      duration_ms: duration === null || !Number.isFinite(Number(duration)) ? null : Number(duration),
+    });
+  }
+  return out;
+}

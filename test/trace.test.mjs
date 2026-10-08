@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   msBetween, newEvent, finishEvent, resultStatus, eventSummary, turnDuration, sortEvents,
-  newUsageAcc, noteUsage, usageTotals, pickCostState,
+  newUsageAcc, noteUsage, usageTotals, pickCostState, parseTaskNotifications,
 } from '../src/ir/trace.mjs';
 
 test('msBetween returns the positive difference in ms, or null when either timestamp is missing or unparseable', () => {
@@ -93,4 +93,17 @@ test('pickCostState keeps the totals and per-model usage, with nulls for missing
     total_cost_usd: 0.75, total_api_duration_ms: null, total_tool_duration_ms: null,
     model_usage: { 'claude-opus-5-5': { inputTokens: 1 } }, has_unknown_model_cost: false,
   });
+});
+
+test('parseTaskNotifications reads every notification block, keyed by its tool-use-id', () => {
+  const text = 'Prompt text <task-notification><task-id>ab</task-id><tool-use-id>toolu_09</tool-use-id>' +
+    '<status>completed</status><usage><subagent_tokens>63021</subagent_tokens><tool_uses>15</tool_uses>' +
+    '<duration_ms>90800</duration_ms></usage></task-notification>' +
+    '<task-notification><tool-use-id>toolu_10</tool-use-id><status>failed</status></task-notification>';
+  assert.deepEqual(parseTaskNotifications(text), [
+    { toolUseId: 'toolu_09', status: 'completed', duration_ms: 90800 },
+    { toolUseId: 'toolu_10', status: 'failed', duration_ms: null },
+  ]);
+  assert.deepEqual(parseTaskNotifications('no notification here'), []);
+  assert.deepEqual(parseTaskNotifications(null), []);
 });

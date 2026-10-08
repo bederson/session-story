@@ -105,6 +105,11 @@ export async function locateSubagents({ claudeDir = defaultClaudeDir(), cwd, ses
   return result;
 }
 
+/** The `agent-<id>.meta.json` the harness writes beside a subagent transcript. */
+export function subagentMetaPath(transcriptPath) {
+  return transcriptPath.replace(/\.jsonl$/, '.meta.json');
+}
+
 /**
  * Sessions split by /clear.
  *

@@ -674,3 +674,120 @@ test('environment has a null version and no models when the records carry none',
   ], { sessionId: 's1', cwd: '/proj' });
   assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: null }, models: [] });
 });
+
+function agentLaunch({ uuid, ts, id, description }) {
+  return assistantTool({ uuid, ts, id, name: 'Agent', input: { description, prompt: 'look', subagent_type: 'Explore' } });
+}
+
+function agentAsyncResult({ uuid, ts, toolUseId, agentId }) {
+  return userRecord({ uuid, ts, toolUseId, content: { isAsync: true, status: 'async_launched', agentId, description: 'd' } });
+}
+
+function notification({ uuid, ts, toolUseId, status = 'completed' }) {
+  return {
+    type: 'queue-operation', operation: 'enqueue', uuid, timestamp: ts, sessionId: 's1',
+    content: `<task-notification><task-id>${toolUseId}</task-id><tool-use-id>${toolUseId}</tool-use-id><status>${status}</status><usage><duration_ms>5000</duration_ms></usage></task-notification>`,
+  };
+}
+
+const SUB_RECORDS = [
+  { type: 'user', uuid: 'su1', parentUuid: null, isSidechain: true, agentId: 'ag1', timestamp: '2026-10-08T10:00:03.000Z', message: { role: 'user', content: 'look' } },
+  { type: 'assistant', uuid: 'sa1', isSidechain: true, agentId: 'ag1', timestamp: '2026-10-08T10:00:04.000Z',
+    message: { id: 'sm1', role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 5, output_tokens: 7 }, content: [{ type: 'tool_use', id: 'stu1', name: 'Read', input: { file_path: '/proj/src/a.js' } }] } },
+  { type: 'user', uuid: 'sr1', isSidechain: true, agentId: 'ag1', timestamp: '2026-10-08T10:00:04.400Z',
+    toolUseResult: { type: 'text', file: { filePath: '/proj/src/a.js', content: 'x', numLines: 1 } },
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'stu1', is_error: false, content: 'x' }] } },
+];
+
+test('an async Agent becomes a subagent event closed by its task notification, with its children attached', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'Explore IR' }),
+    agentAsyncResult({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', agentId: 'ag1' }),
+    notification({ uuid: 'q1', ts: '2026-10-08T10:00:20.000Z', toolUseId: 'tu1' }),
+  ];
+  const subagents = { ag1: { records: SUB_RECORDS, meta: { agentType: 'Explore', description: 'Explore IR', toolUseId: 'tu1' } } };
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents });
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(agent.kind, 'subagent');
+  assert.equal(agent.status, 'ok');
+  assert.equal(agent.ended_at, '2026-10-08T10:00:20.000Z');
+  assert.equal(agent.duration_ms, 19000);
+  assert.equal(agent.ended_source, 'notification');
+  assert.equal(agent.agent_id, 'ag1');
+  assert.equal(agent.agent_type, 'Explore');
+  assert.equal(agent.usage.output_tokens, 7);
+  const child = story.trace.events.find((e) => e.id === 'stu1');
+  assert.equal(child.kind, 'tool');
+  assert.equal(child.parent_id, 'tu1');
+  assert.equal(child.agent_id, 'ag1');
+  assert.equal(child.turn, 1);
+  assert.equal(child.duration_ms, 400);
+  assert.equal(story.turns[0].duration_ms, 20000);
+  assert.deepEqual(story.environment.models, ['claude-opus-5-5']);
+});
+
+test('subagents passed as plain record arrays still work (no meta)', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'Explore IR' }),
+    agentAsyncResult({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', agentId: 'ag1' }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: SUB_RECORDS } });
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(agent.agent_type, null);
+  assert.equal(agent.status, 'unknown');
+  assert.equal(agent.ended_at, '2026-10-08T10:00:04.400Z');
+  assert.equal(agent.ended_source, 'subagent_transcript');
+});
+
+test('two Agent calls in one turn match notifications by tool-use-id, and a missing sidechain file leaves no children', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'first' }),
+    agentLaunch({ uuid: 'a2', ts: '2026-10-08T10:00:01.500Z', id: 'tu2', description: 'second' }),
+    agentAsyncResult({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', agentId: 'ag1' }),
+    agentAsyncResult({ uuid: 'r2', ts: '2026-10-08T10:00:02.500Z', toolUseId: 'tu2', agentId: 'ag-missing' }),
+    notification({ uuid: 'q2', ts: '2026-10-08T10:00:10.000Z', toolUseId: 'tu2', status: 'failed' }),
+    notification({ uuid: 'q1', ts: '2026-10-08T10:00:20.000Z', toolUseId: 'tu1' }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: SUB_RECORDS } });
+  const first = story.trace.events.find((e) => e.id === 'tu1');
+  const second = story.trace.events.find((e) => e.id === 'tu2');
+  assert.equal(first.status, 'ok');
+  assert.equal(first.ended_at, '2026-10-08T10:00:20.000Z');
+  assert.equal(second.status, 'error');
+  assert.equal(second.ended_at, '2026-10-08T10:00:10.000Z');
+  assert.equal(second.usage, null);
+  assert.equal(story.trace.events.filter((e) => e.parent_id === 'tu2').length, 0);
+  assert.equal(story.trace.events.filter((e) => e.parent_id === 'tu1').length, 1);
+});
+
+test('a task notification embedded in a real prompt still closes its agent and the prompt is still a turn', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'first' }),
+    agentAsyncResult({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', agentId: 'ag1' }),
+    { type: 'user', uuid: 'u2', timestamp: '2026-10-08T10:00:30.000Z', message: { role: 'user',
+      content: '<task-notification><tool-use-id>tu1</tool-use-id><status>completed</status></task-notification>now continue' } },
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: {} });
+  assert.equal(story.turns.length, 2);
+  assert.equal(story.turns[1].prompt, 'now continue');
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(agent.status, 'ok');
+  assert.equal(agent.ended_at, '2026-10-08T10:00:30.000Z');
+});
+
+test('a synchronous Agent result closes the subagent event from the result itself', () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
+    agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'first' }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:12.000Z', toolUseId: 'tu1', content: { agentId: 'ag1', content: [{ type: 'text', text: 'done' }] } }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: SUB_RECORDS } });
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(agent.status, 'ok');
+  assert.equal(agent.ended_source, 'result');
+  assert.equal(agent.duration_ms, 11000);
+});
