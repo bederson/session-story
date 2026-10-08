@@ -93,6 +93,21 @@ function bashCalls(record) {
     });
 }
 
+/**
+ * Claude's own words in a main-thread assistant record: its non-empty text
+ * blocks, trimmed. Thinking blocks and subagent (sidechain) records are left
+ * out; the turn panel shows what Claude told the user.
+ */
+function assistantTexts(record) {
+  if (record.type !== 'assistant' || record.isSidechain) return [];
+  const content = record.message && record.message.content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((block) => block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text.trim())
+    .filter((text) => text !== '');
+}
+
 /** Every tool_use block in a record, regardless of which tool it names. */
 function allToolUseCalls(record) {
   if (record.type !== 'assistant') return [];
@@ -437,6 +452,9 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       if (currentTurn) {
         if (!usageAcc.has(currentTurn.index)) usageAcc.set(currentTurn.index, newUsageAcc());
         noteUsage(usageAcc.get(currentTurn.index), record);
+        for (const text of assistantTexts(record)) {
+          currentTurn.replies.push({ at: record.timestamp || null, text });
+        }
       }
     }
 
@@ -473,6 +491,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         at: record.timestamp,
         prompt: stripSyntheticBlocks(record.message.content),
         summary: '',
+        replies: [],
         edits: [],
         bash: [],
         errors: [],

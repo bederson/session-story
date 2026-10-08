@@ -435,8 +435,8 @@ export const TRACE_SCRIPT = `
         });
       }
       if (!target) return;
-      // The panel may be narrowed to another file.
-      if (target.classList.contains('file-hidden')) filterPanelFiles(panel, '');
+      // A turn opens with its code hidden: show this edit's file.
+      if (target.classList.contains('file-hidden')) filterPanelFiles(panel, target.dataset.file);
       // An edit outside the project is hidden while "Project files only" is on.
       if (target.getAttribute('data-outside') === '1' && !root.classList.contains('show-outside')) {
         var scope = document.querySelector('.opt-toggle[data-opt="scope"]');

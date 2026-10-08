@@ -791,3 +791,30 @@ test('a synchronous Agent result closes the subagent event from the result itsel
   assert.equal(agent.ended_source, 'result');
   assert.equal(agent.duration_ms, 11000);
 });
+
+test("keeps Claude's text replies on the turn, in order, skipping thinking, empty text and subagent records", () => {
+  const records = [
+    { type: 'user', uuid: 'u1', timestamp: '2026-09-10T10:00:00.000Z', message: { role: 'user', content: 'Add a title prop' } },
+    { type: 'assistant', uuid: 'a1', timestamp: '2026-09-10T10:00:01.000Z', message: { role: 'assistant', content: [
+      { type: 'thinking', thinking: 'private reasoning' },
+      { type: 'text', text: "  I'll look at Panel first.  " },
+      { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/proj/Panel.tsx' } },
+    ] } },
+    { type: 'assistant', uuid: 'a2', timestamp: '2026-09-10T10:00:02.000Z', isSidechain: true, message: { role: 'assistant', content: [
+      { type: 'text', text: 'subagent chatter' },
+    ] } },
+    { type: 'assistant', uuid: 'a3', timestamp: '2026-09-10T10:00:03.000Z', message: { role: 'assistant', content: [
+      { type: 'text', text: '   ' },
+      { type: 'text', text: 'Done. The prop is added.' },
+    ] } },
+    { type: 'user', uuid: 'u2', timestamp: '2026-09-10T10:01:00.000Z', message: { role: 'user', content: 'Thanks' } },
+  ];
+
+  const story = buildStory(records, { sessionId: 's1' });
+
+  assert.deepEqual(story.turns[0].replies, [
+    { at: '2026-09-10T10:00:01.000Z', text: "I'll look at Panel first." },
+    { at: '2026-09-10T10:00:03.000Z', text: 'Done. The prop is added.' },
+  ]);
+  assert.deepEqual(story.turns[1].replies, []);
+});

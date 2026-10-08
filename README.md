@@ -79,9 +79,9 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 | View       | Best for                         | Shows                                                                                         |
 | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, files touched — linked to that turn's diff, which you can narrow to one file or show as all changes |
+| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, files touched — with Claude's text output for the turn, and its code behind an “All changes” / per-file picker |
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
-| **Story**  | A stakeholder who wants the gist | A narrative card per turn, code collapsed by default                                          |
+| **Story**  | A stakeholder who wants the gist | A narrative card per turn with Claude's text output, code collapsed by default |
 | **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |
 | **Trace**  | Agent and tool developers | Execution timeline of prompts, tool calls and subagents with status and latency; filters; deterministic metrics, token usage, and cost when Claude Code recorded it |
 

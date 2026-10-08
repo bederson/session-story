@@ -140,6 +140,15 @@ html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border
 .turn-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
 .turn-panel + .turn-panel { margin-top: 20px; }
 html.js .turn-panel:not(.active) { display: none; }
+.turn-replies { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.replies-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.replies-head .icon { color: var(--accent-ink); }
+.replies-earlier > summary { cursor: pointer; font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.replies-earlier > summary:hover { color: var(--text-2); }
+.reply { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; color: var(--text); }
+.replies-earlier .reply { color: var(--text-2); padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px dashed var(--border); }
+.reply-final { max-height: 22em; overflow: auto; }
+.reply .turn-time { margin-bottom: 2px; }
 .file-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 html:not(.js) .file-filter { display: none; }
 .file-filter-btn { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; appearance: none; background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; color: var(--text-2); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; text-align: left; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
@@ -149,6 +158,9 @@ html:not(.js) .file-filter { display: none; }
 .file-filter-name { overflow-wrap: anywhere; }
 .file-filter-btn .edit-stats { margin-left: 0; }
 .edit.file-hidden { display: none; }
+.pick-hint { display: none; align-items: center; gap: 8px; margin: 0; padding: 22px 16px; color: var(--text-3); font-size: 13px; }
+html.js .turn-panel.no-pick .pick-hint { display: flex; }
+.story-card .turn-replies { margin: 12px 0 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
 /* ---- edits & hunks ------------------------------------------------------ */
 .edit { scroll-margin-top: 72px; } /* clear the sticky lens nav when a chip scrolls here */
@@ -398,13 +410,15 @@ const SCRIPT = THEME_TOGGLE_JS + `
     if (items.length > 0) select(items[0].dataset[itemKey]);
     return { items: items, select: select };
   }
-  // A turn panel's file filter: show one file's edits, or all of them ('').
+  // A turn panel's file filter: show one file's edits, all of them (''), or
+  // none (null) until the reader picks.
   function filterPanelFiles(panel, file) {
+    panel.classList.toggle('no-pick', file === null);
     Array.prototype.forEach.call(panel.querySelectorAll('.file-filter-btn'), function (btn) {
       btn.setAttribute('aria-pressed', String(btn.dataset.fileFilter === file));
     });
     Array.prototype.forEach.call(panel.querySelectorAll('.edit'), function (edit) {
-      edit.classList.toggle('file-hidden', !!file && edit.dataset.file !== file);
+      edit.classList.toggle('file-hidden', file === null || (!!file && edit.dataset.file !== file));
     });
   }
   Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn'), function (btn) {
@@ -420,8 +434,9 @@ const SCRIPT = THEME_TOGGLE_JS + `
       });
     });
   }
-  // Every time a turn is opened it starts on all of its changes.
-  var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, ''); });
+  // Every time a turn is opened its code starts hidden, until a file or
+  // "All changes" is picked.
+  var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, null); });
 
   // A file chip under a review step opens the turn's panel filtered to that file.
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -448,8 +463,7 @@ const SCRIPT = THEME_TOGGLE_JS + `
         if (!target && edit.dataset.file === chip.dataset.file) target = edit;
       });
       if (!target) return;
-      // A single-file turn has no filter bar, and needs none.
-      if (panel.querySelector('.file-filter')) filterPanelFiles(panel, chip.dataset.file);
+      filterPanelFiles(panel, chip.dataset.file);
       revealEdit(target);
     });
   });

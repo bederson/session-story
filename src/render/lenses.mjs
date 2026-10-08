@@ -356,8 +356,9 @@ function editStats({ added, removed }) {
 }
 
 /**
- * Buttons that narrow a turn panel to one file's edits, or back to all of
- * them. The page script does the hiding; a single-file turn gets no bar.
+ * Buttons that open a turn panel's code: all of its edits, or one file's.
+ * Nothing is picked when a turn opens, so the page script hides every edit
+ * until the reader chooses; without JS the bar is hidden and all edits show.
  */
 function renderFileFilter(edits) {
   const files = new Map();
@@ -365,7 +366,7 @@ function renderFileFilter(edits) {
     if (!files.has(edit.rel)) files.set(edit.rel, { outside: edit.outside_cwd, edits: [] });
     files.get(edit.rel).edits.push(edit);
   }
-  if (files.size < 2) return '';
+  if (files.size === 0) return '';
   const buttons = [...files].map(([rel, { outside, edits: fileEdits }]) =>
     `<button type="button" class="file-filter-btn" data-file-filter="${escapeHtml(rel)}" aria-pressed="false"` +
     `${outside ? ' data-outside="1"' : ''} title="Show only this file's changes">` +
@@ -373,10 +374,36 @@ function renderFileFilter(edits) {
   );
   return (
     `<div class="file-filter" role="group" aria-label="Show changes for">` +
-    `<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="true">` +
+    `<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="false">` +
     `${icon('review')}<span class="file-filter-name">All changes</span>` +
     `${dual(editStats(statsOf(inProject(edits))), editStats(statsOf(edits)))}</button>` +
     buttons.join('') +
+    `</div>` +
+    `<p class="pick-hint">${icon('review')}Pick “All changes” or a file to see the code.</p>`
+  );
+}
+
+/**
+ * What Claude said during a turn, shown above its diffs: the final reply in
+ * full, any earlier ones folded behind a <details>. Empty when the turn has
+ * no replies (older stories never carry them).
+ */
+function renderReplies(turn) {
+  const replies = turn.replies || [];
+  if (replies.length === 0) return '';
+  const reply = (r, extra = '') =>
+    `<div class="reply${extra}">${turnTime(r)}${escapeHtml(r.text)}</div>`;
+  const earlier = replies.slice(0, -1);
+  const folded = earlier.length > 0
+    ? `<details class="replies-earlier"><summary>${earlier.length} earlier ${plural(earlier.length, 'message')}</summary>` +
+      earlier.map((r) => reply(r)).join('') +
+      `</details>`
+    : '';
+  return (
+    `<div class="turn-replies">` +
+    `<div class="replies-head">${icon('story')}<span>Claude’s output</span></div>` +
+    folded +
+    reply(replies[replies.length - 1], ' reply-final') +
     `</div>`
   );
 }
@@ -427,6 +454,7 @@ export function renderReviewLens(story) {
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
+        renderReplies(turn) +
         renderFileFilter(turn.edits) +
         filteredNote +
         editsHtml +
@@ -535,6 +563,7 @@ export function renderStoryLens(story) {
         `<div class="story-index">${turn.index}</div>` +
         `<blockquote class="story-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         `<p class="story-summary">${escapeHtml(turn.summary || '')}</p>` +
+        renderReplies(turn) +
         renderActivityBar(turn, max) +
         `<p class="story-filecount">${icon('files')}` +
         dual(countPhrase(inProject(turn.edits)), countPhrase(turn.edits)) + `</p>` +

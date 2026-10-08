@@ -130,6 +130,28 @@
             "type": "string",
             "description": "Filled in by Claude; required non-empty in strict validation."
           },
+          "replies": {
+            "type": "array",
+            "description": "Claude's text replies during this turn, in order (main thread only; thinking and subagent text left out). The Review lens shows them above the turn's diffs.",
+            "items": {
+              "type": "object",
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "bash": {
             "type": "array",
             "description": "Shell commands run during this turn. They carry no diff of their own; they are what links a git-detected change back to this prompt, and are also the source for the Report lens's commands/tests/installs sections.",

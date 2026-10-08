@@ -112,7 +112,10 @@ test('renderReviewLens gives a multi-file turn panel a file filter: "All changes
   const panel2 = html.slice(html.indexOf('data-turn-panel="2"'));
 
   assert.match(panel1, /<div class="file-filter" role="group" aria-label="Show changes for">/);
-  assert.match(panel1, /<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="true">[^]*?All changes/);
+  // Nothing is picked when a turn opens: the code stays hidden until the
+  // reader chooses "All changes" or a file.
+  assert.match(panel1, /<button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="false">[^]*?All changes/);
+  assert.match(panel1, /class="pick-hint"/);
   // "All changes" totals follow the scope toggle, like the panel meta
   assert.match(panel1, /All changes<\/span><span class="v-in">[^]*?\+5[^]*?<span class="v-all">[^]*?\+6/);
   // one button per distinct file, carrying that file's summed stats
@@ -121,8 +124,9 @@ test('renderReviewLens gives a multi-file turn panel a file filter: "All changes
   assert.match(panel1, /data-file-filter="src\/a\.ts" aria-pressed="false"[^>]*>[^]*?\+5/);
   // an outside-project file's button hides with the scope toggle like its edits do
   assert.match(panel1, /data-file-filter="\.\.\/\.\.\/tmp\/s\.json" aria-pressed="false" data-outside="1"/);
-  // a single-file turn has nothing to filter
-  assert.doesNotMatch(panel2, /file-filter/);
+  // a single-file turn still needs the bar, or its code could not be opened
+  assert.match(panel2, /data-file-filter="" aria-pressed="false"/);
+  assert.match(panel2, /data-file-filter="src\/a\.ts" aria-pressed="false"/);
 });
 
 test('renderReviewLens escapes quotes in a file chip key', async () => {
@@ -512,4 +516,56 @@ test('renderStoryLens hides "Show code" with the project filter when every chang
   assert.match(turn2, /<details class="story-code" data-outside="1">/);
   // turn 1 has a project change, so its toggle always shows
   assert.match(html.slice(0, html.lastIndexOf('<article')), /<details class="story-code">/);
+});
+
+test("renderReviewLens shows Claude's output above the diffs, folding all but the final reply", async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p1', summary: '', edits: [], replies: [
+        { at: null, text: 'First <look>' },
+        { at: null, text: 'Second step' },
+        { at: '2026-09-10T10:00:03.000Z', text: 'All done & tested' },
+      ] },
+      { index: 2, id: 'u2', at: null, prompt: 'p2', summary: '', edits: [], replies: [{ at: null, text: 'Only reply' }] },
+      { index: 3, id: 'u3', at: null, prompt: 'p3', summary: '', edits: [] },
+    ],
+    files: [],
+  });
+
+  const html = renderReviewLens(story);
+  const panel = (n) => html.split(`data-turn-panel="${n}"`)[1].split('</section>')[0];
+
+  assert.match(panel(1), /class="turn-replies"/);
+  assert.match(panel(1), /<summary>2 earlier messages<\/summary>/);
+  assert.match(panel(1), /First &lt;look&gt;/);
+  assert.match(panel(1), /class="reply reply-final"[^>]*>(?:<time[^>]*>[^<]*<\/time>)?All done &amp; tested<\/div>/);
+  // Claude's output comes before the edit list.
+  assert.ok(panel(1).indexOf('turn-replies') < panel(1).indexOf('no-edits'));
+
+  assert.match(panel(2), /Only reply/);
+  assert.doesNotMatch(panel(2), /<details/);
+
+  assert.doesNotMatch(panel(3), /turn-replies/);
+});
+
+test("renderStoryLens shows Claude's output on a card, and nothing extra when a turn has no replies", async () => {
+  const { renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p1', summary: 's1', edits: [], replies: [
+        { at: null, text: 'Looking around' },
+        { at: null, text: 'Finished <ok>' },
+      ] },
+      { index: 2, id: 'u2', at: null, prompt: 'p2', summary: 's2', edits: [] },
+    ],
+    files: [],
+  });
+
+  const cards = renderStoryLens(story).split('<article class="story-card">').slice(1);
+
+  assert.match(cards[0], /class="turn-replies"/);
+  assert.match(cards[0], /<summary>1 earlier message<\/summary>/);
+  assert.match(cards[0], /Finished &lt;ok&gt;/);
+  assert.doesNotMatch(cards[1], /turn-replies/);
 });
