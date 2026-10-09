@@ -1,8 +1,4 @@
 node_modules/
-*.log
-story.json
-story.html
-session-story.html
 .session-stories/
 .DS_Store
-my-notes.txt
+examples/
