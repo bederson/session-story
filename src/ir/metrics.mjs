@@ -9,6 +9,10 @@
  * - validation: Bash runs classified test|lint|build; final_state comes from
  *   the last one (ok -> passed, error -> failed, none -> none, else unknown).
  * - reads: Read|Glob|Grep events; files_read = distinct ok Read targets.
+ * - turns[]: per turn, its duration and main-thread tokens, the tokens of the
+ *   subagents it spawned, and its share of the session's output tokens,
+ *   input tokens (incl. cache) and duration. A share is null when either
+ *   side is unknown; shares need not sum to 1.
  */
 
 import { msBetween } from './trace.mjs';
@@ -175,6 +179,68 @@ function usageMetrics(story) {
   };
 }
 
+const TOKEN_KEYS = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_creation_tokens'];
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/** num / den rounded to 3 decimals, or null when either is unknown or den is 0. */
+export function shareOf(num, den) {
+  if (!isNum(num) || !isNum(den) || den <= 0) return null;
+  return Math.round((num / den) * 1000) / 1000;
+}
+
+/** Input including cache reads and writes, or null if any part is unknown. */
+function inputTotal(u) {
+  if (!u) return null;
+  const parts = [u.input_tokens, u.cache_read_tokens, u.cache_creation_tokens];
+  return parts.every(isNum) ? parts.reduce((a, b) => a + b, 0) : null;
+}
+
+/** a + b where either may be null; null only when both are. */
+function plus(a, b) {
+  if (!isNum(a) && !isNum(b)) return null;
+  return (isNum(a) ? a : 0) + (isNum(b) ? b : 0);
+}
+
+function subagentTotals(agents) {
+  if (agents.length === 0) return null;
+  const withUsage = agents.map((e) => e.usage).filter(Boolean);
+  const out = { count: agents.length, with_usage: withUsage.length };
+  for (const key of TOKEN_KEYS) {
+    out[key] = withUsage.length ? withUsage.reduce((n, u) => n + (u[key] || 0), 0) : null;
+  }
+  return out;
+}
+
+function turnMetrics(story, usage, sessionMs) {
+  const events = (story.trace && Array.isArray(story.trace.events)) ? story.trace.events : [];
+  const agentsByTurn = new Map();
+  for (const e of events) {
+    if (e.kind !== 'subagent') continue;
+    if (!agentsByTurn.has(e.turn)) agentsByTurn.set(e.turn, []);
+    agentsByTurn.get(e.turn).push(e);
+  }
+  const sessionInput = inputTotal(usage);
+  return (story.turns || []).map((turn) => {
+    const u = turn.usage || null;
+    const sub = subagentTotals(agentsByTurn.get(turn.index) || []);
+    const entry = {
+      index: turn.index,
+      duration_ms: isNum(turn.duration_ms) ? turn.duration_ms : null,
+      duration_source: turn.duration_source || 'unknown',
+    };
+    for (const key of TOKEN_KEYS) entry[key] = u && isNum(u[key]) ? u[key] : null;
+    entry.api_calls = u && isNum(u.api_calls) ? u.api_calls : null;
+    entry.complete = u ? !!u.complete : null;
+    entry.subagents = sub;
+    entry.share = {
+      output: shareOf(plus(entry.output_tokens, sub && sub.output_tokens), usage.output_tokens),
+      input: shareOf(plus(inputTotal(u), sub && inputTotal(sub)), sessionInput),
+      duration: shareOf(entry.duration_ms, sessionMs),
+    };
+    return entry;
+  });
+}
+
 /**
  * @param {object} story - a Story IR, with or without `trace`
  * @returns {{execution: object, code: object, validation: object, reads: object, usage: object}}
@@ -184,9 +250,11 @@ export function computeMetrics(story) {
   const toolEvents = hasTrace ? story.trace.events.filter((e) => e.kind !== 'prompt') : [];
   const runs = bashRuns(story);
   const session = story.session || {};
+  const durationMs = msBetween(session.started_at, session.ended_at);
+  const usage = usageMetrics(story);
   return {
     execution: {
-      duration_ms: msBetween(session.started_at, session.ended_at),
+      duration_ms: durationMs,
       turns: (story.turns || []).length,
       tool_calls: hasTrace ? toolEvents.length : null,
       failed_tool_calls: hasTrace ? toolEvents.filter((e) => e.status === 'error').length : null,
@@ -198,6 +266,7 @@ export function computeMetrics(story) {
     code: codeMetrics(story),
     validation: validationState(runs),
     reads: hasTrace ? readMetrics(toolEvents) : { files_read: null, tool_calls: null },
-    usage: usageMetrics(story),
+    usage,
+    turns: turnMetrics(story, usage, durationMs),
   };
 }

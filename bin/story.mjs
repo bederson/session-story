@@ -69,6 +69,7 @@ function toolCallsInTurn(story, index) {
 }
 
 function briefProjection(story) {
+  const perTurn = new Map(((story.metrics && story.metrics.turns) || []).map((t) => [t.index, t]));
   return {
     session: {
       id: story.session.id,
@@ -86,6 +87,7 @@ function briefProjection(story) {
     metrics: story.metrics
       ? {
         ...story.metrics,
+        turns: undefined, // per-turn figures ride on brief.turns instead
         code: {
           ...story.metrics.code,
           files_edited_repeatedly: (story.metrics.code.files_edited_repeatedly || []).slice(0, 5),
@@ -103,6 +105,8 @@ function briefProjection(story) {
       plan: t.plan ? { approved: t.plan.approved, excerpt: t.plan.text.slice(0, 1500) } : null,
       duration_ms: t.duration_ms === undefined ? null : t.duration_ms,
       tool_calls: toolCallsInTurn(story, t.index),
+      output_tokens: perTurn.has(t.index) ? perTurn.get(t.index).output_tokens : null,
+      share: perTurn.has(t.index) ? perTurn.get(t.index).share : null,
     })),
   };
 }

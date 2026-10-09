@@ -1262,6 +1262,135 @@
               "type": "boolean"
             }
           }
+        },
+        "turns": {
+          "type": "array",
+          "description": "One entry per turn, in turn order: its duration, its main-thread tokens (from turns[].usage), the tokens of the subagents it spawned, and its share of the session. Shares are fractions rounded to 3 decimals and null when either side is unknown. They need not sum to 1: turn durations can come from the harness while the session duration is wall clock (including gaps across /clear), and session tokens prefer the cost-state record, which also counts the harness's background calls. Never a per-turn cost.",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "duration_source"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "duration_source": {
+                "type": "string",
+                "enum": [
+                  "transcript",
+                  "derived",
+                  "unknown"
+                ]
+              },
+              "input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cache_read_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cache_creation_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "api_calls": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "complete": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "null when the turn carried no usage."
+              },
+              "subagents": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Subagents this turn spawned; null when none. Token fields are null when none of them carried usage.",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "with_usage": {
+                    "type": "integer"
+                  },
+                  "input_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "output_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "cache_read_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "cache_creation_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "share": {
+                "type": "object",
+                "properties": {
+                  "output": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "input": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "duration": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

@@ -10,7 +10,9 @@
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { statTile, plural, dual, formatTokens, formatCost, inputWithCache } from './lenses.mjs';
+import {
+  statTile, plural, dual, formatTokens, formatCost, inputWithCache, formatLatency, DURATION_SOURCE_LABEL,
+} from './lenses.mjs';
 import { msBetween } from '../ir/trace.mjs';
 
 const USAGE_SOURCE_LABEL = {
@@ -35,18 +37,8 @@ export function formatElapsed(ms) {
   return h > 0 ? `+${h}:${pad(m)}:${pad(s)}` : `+${m}:${pad(s)}`;
 }
 
-export function formatLatency(ms) {
-  if (!isNum(ms)) return null;
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
-  const total = Math.round(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m ${total % 60}s`;
-}
-
 // Shared with the header and the library page.
-export { formatTokens, formatCost };
+export { formatTokens, formatCost, formatLatency };
 
 function na(reason) {
   return `<span class="trace-na">not recorded</span>` + (reason ? ` <span class="trace-note">${reason}</span>` : '');
@@ -172,7 +164,6 @@ export const TRACE_FILTERS = [
 ];
 const STATUS_ICON = { ok: 'check', error: 'cross', rejected: 'cross', interrupted: 'warning', unknown: 'clock' };
 const STATUS_LABEL = { ok: 'ok', error: 'failed', rejected: 'rejected by the user', interrupted: 'interrupted', unknown: 'no result recorded' };
-const DURATION_SOURCE_LABEL = { transcript: 'reported by Claude Code', derived: 'estimated from timestamps', unknown: 'not recorded' };
 const ENDED_LABEL = {
   result: 'its tool result',
   notification: 'completion notice',
@@ -311,6 +302,65 @@ function renderFilters(events) {
   );
 }
 
+const WHERE_TOP = 5;
+
+function oneLine(text, max = 120) {
+  const line = String(text || '').split('\n')[0].trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+function rankBy(rows, key) {
+  return rows
+    .filter((r) => isNum(r[key]))
+    .sort((a, b) => (b[key] - a[key]) || (a.index - b.index))
+    .slice(0, WHERE_TOP);
+}
+
+function whereList(title, rows, key, format, titleOf) {
+  if (rows.length < 2) return '';
+  const max = rows[0][key];
+  const items = rows.map((r) => {
+    const width = max > 0 ? Math.max(1, Math.round((r[key] / max) * 100)) : 0;
+    const tip = titleOf(r);
+    return (
+      `<li class="where-row" data-turn="${r.index}">` +
+      `<span class="trace-turn">Turn ${r.index}</span>` +
+      `<span class="where-text">${escapeHtml(r.text)}</span>` +
+      `<span class="where-bar"><span style="width:${width}%"></span></span>` +
+      `<span class="trace-dur"${tip ? ` title="${escapeHtml(tip)}"` : ''}>${format(r[key])}</span>` +
+      jumpButton(r.index, 'Open') +
+      `</li>`
+    );
+  });
+  return `<section class="trace-metric-group where-group"><h3>${title}</h3><ol class="where-list">${items.join('')}</ol></section>`;
+}
+
+/**
+ * The turns that took the most output tokens (main thread plus the
+ * subagents they spawned) and the most time, from `metrics.turns`. A list
+ * needs two ranked turns to say anything; '' when neither has them.
+ */
+export function renderWhereItWent(story) {
+  const perTurn = story && story.metrics && Array.isArray(story.metrics.turns) ? story.metrics.turns : [];
+  const turns = new Map(((story && story.turns) || []).map((t) => [t.index, t]));
+  const rows = perTurn.map((pt) => {
+    const turn = turns.get(pt.index) || {};
+    const sub = pt.subagents && isNum(pt.subagents.output_tokens) ? pt.subagents : null;
+    const output = isNum(pt.output_tokens) || sub ? (pt.output_tokens || 0) + (sub ? sub.output_tokens : 0) : null;
+    return { ...pt, output, text: oneLine(turn.summary || turn.prompt) };
+  });
+  const tokens = whereList('By output tokens', rankBy(rows, 'output'), 'output', formatTokens, (r) => {
+    const sub = r.subagents && isNum(r.subagents.output_tokens) ? r.subagents : null;
+    if (!sub) return '';
+    const n = sub.with_usage;
+    return `${formatTokens(r.output_tokens || 0)} main + ${formatTokens(sub.output_tokens)} in ${n} ${plural(n, 'agent')}`;
+  });
+  const time = whereList('By duration', rankBy(rows, 'duration_ms'), 'duration_ms', formatLatency,
+    (r) => DURATION_SOURCE_LABEL[r.duration_source] || '');
+  if (!tokens && !time) return '';
+  return `<div class="trace-where">${tokens}${time}</div>`;
+}
+
 /**
  * @param {object} story - Story IR with `trace` (and usually `metrics`)
  * @returns {string}
@@ -330,7 +380,7 @@ export function renderTraceLens(story) {
   return (
     `<div class="trace-lens">` +
     renderScorecard(story.metrics) +
-    `<div class="trace-body"><div class="trace-main">${renderFilters(events)}${timeline}</div>${renderMetrics(story)}</div>` +
+    `<div class="trace-body"><div class="trace-main">${renderWhereItWent(story)}${renderFilters(events)}${timeline}</div>${renderMetrics(story)}</div>` +
     `</div>`
   );
 }
@@ -384,6 +434,13 @@ html:not(.js) .trace-filters, html:not(.js) .trace-jump { display: none; }
 .trace-metric-group dd { text-align: right; font-family: var(--mono); }
 .trace-list { margin: 0; padding: 0; list-style: none; }
 .trace-env { margin: 0; font-size: 11px; color: var(--text-3); }
+.trace-where { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.where-list { list-style: none; margin: 0; padding: 0; }
+.where-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; min-width: 0; }
+.where-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.where-bar { flex: none; width: 64px; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.where-bar span { display: block; height: 100%; background: var(--accent); }
+.where-row .trace-dur { margin-left: 0; min-width: 48px; text-align: right; }
 @media (max-width: 900px) {
   .trace-body { grid-template-columns: minmax(0, 1fr); }
   .trace-metrics { position: static; }

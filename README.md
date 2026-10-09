@@ -79,11 +79,11 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 | View       | Best for                         | Shows                                                                                         |
 | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, number of files changed — with the turn's prompt and Claude's text output in its panel, and its code behind an “All changes” / per-file picker |
+| **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, number of files changed — with the turn's prompt and Claude's text output in its panel, and its code behind an “All changes” / per-file picker. Each turn shows how long it took and the tokens it used, with a bar for its share of the session's output |
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
 | **Story**  | A stakeholder who wants the gist | A narrative card per turn with Claude's text output, code collapsed by default |
 | **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |
-| **Trace**  | Agent and tool developers | Execution timeline of prompts, tool calls and subagents with status and latency; filters; deterministic metrics, token usage, and cost when Claude Code recorded it |
+| **Trace**  | Agent and tool developers | Execution timeline of prompts, tool calls and subagents with status and latency; a “Where it went” ranking of the turns that used the most output tokens and time; filters; deterministic metrics, token usage, and cost when Claude Code recorded it |
 
 The Trace tab appears for stories extracted by this version; an older `story.json` renders without it.
 

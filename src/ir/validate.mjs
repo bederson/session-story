@@ -81,6 +81,20 @@ export function validateStory(story, { strict = false } = {}) {
     if (validation && !FINAL_STATES.includes(validation.final_state)) {
       errors.push(`metrics.validation.final_state must be one of: ${FINAL_STATES.join(', ')}`);
     }
+    const perTurn = story.metrics && story.metrics.turns;
+    if (perTurn !== undefined) {
+      if (!Array.isArray(perTurn)) {
+        errors.push('metrics.turns must be an array');
+      } else {
+        perTurn.forEach((t, i) => {
+          const prefix = `metrics.turns[${i}]`;
+          if (!t || !Number.isInteger(t.index)) errors.push(`${prefix}.index must be an integer`);
+          if (t && !DURATION_SOURCES.includes(t.duration_source)) {
+            errors.push(`${prefix}.duration_source must be one of: ${DURATION_SOURCES.join(', ')}`);
+          }
+        });
+      }
+    }
   }
 
   if (strict && story.session) {

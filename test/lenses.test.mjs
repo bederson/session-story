@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderHeader, formatRange } from '../src/render/lenses.mjs';
+import { renderHeader, formatRange, renderReviewLens, renderStoryLens, renderTurnUsage } from '../src/render/lenses.mjs';
 
 function sampleStory(overrides = {}) {
   return {
@@ -618,4 +618,61 @@ test('renderDiffLens puts a name filter above the file tree', async () => {
 
   assert.match(html, /<div class="file-nav"><label class="file-search">.*<input type="search"[^>]*aria-label="Filter files by name".*<ul class="file-tree">/);
   assert.match(html, /<p class="file-search-empty" hidden>No files match\.<\/p>/);
+});
+
+function perTurn(overrides = {}) {
+  return {
+    index: 1, duration_ms: 134000, duration_source: 'transcript',
+    input_tokens: 2000, output_tokens: 12300, cache_read_tokens: 1078000, cache_creation_tokens: 20000, api_calls: 9, complete: true,
+    subagents: null, share: { output: 0.42, input: 0.3, duration: 0.2 },
+    ...overrides,
+  };
+}
+
+test('renderTurnUsage shows duration with its source, output and input tokens with the cache share, and a share bar', () => {
+  const html = renderTurnUsage(perTurn());
+  assert.match(html, /^<p class="turn-usage">/);
+  assert.match(html, /<span class="tu-dur" title="reported by Claude Code">2m 14s<\/span>/);
+  assert.match(html, /12\.3k out/);
+  assert.match(html, /1\.1M in/);
+  assert.match(html, /\(98% cache\)/);
+  assert.match(html, /<span class="share-track" title="42% of the session’s output tokens"><span class="share-fill" style="width:42%"><\/span><\/span>/);
+});
+
+test('renderTurnUsage names subagent tokens apart from the main thread, and says when they were not recorded', () => {
+  const sub = (count, withUsage) => perTurn({ subagents: { count, with_usage: withUsage, input_tokens: withUsage ? 10 : null, output_tokens: withUsage ? 45100 : null, cache_read_tokens: withUsage ? 0 : null, cache_creation_tokens: withUsage ? 0 : null } });
+  assert.match(renderTurnUsage(sub(2, 2)), /<span class="tu-sub">\+ 45\.1k out in 2 agents<\/span>/);
+  assert.match(renderTurnUsage(sub(1, 1)), /\+ 45\.1k out in 1 agent</);
+  assert.match(renderTurnUsage(sub(2, 1)), /\+ 45\.1k out in 1 of 2 agents/);
+  assert.match(renderTurnUsage(sub(2, 0)), /2 agents, tokens not recorded/);
+});
+
+test('renderTurnUsage leaves out what is unknown instead of showing 0', () => {
+  const durationOnly = renderTurnUsage(perTurn({ input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, api_calls: null, complete: null, share: { output: null, input: null, duration: 0.2 } }));
+  assert.match(durationOnly, /2m 14s/);
+  assert.doesNotMatch(durationOnly, /out|share-track|undefined|null/);
+  assert.equal(renderTurnUsage(perTurn({ duration_ms: null, duration_source: 'unknown', input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, complete: null, share: { output: null, input: null, duration: null } })), '');
+  assert.equal(renderTurnUsage(undefined), '');
+  const noDuration = renderTurnUsage(perTurn({ duration_ms: null, duration_source: 'unknown' }));
+  assert.doesNotMatch(noDuration, /tu-dur|—/);
+  assert.match(renderTurnUsage(perTurn({ complete: false })), /<span class="tu-partial" title="[^"]+">partial<\/span>/);
+  assert.doesNotMatch(renderTurnUsage(perTurn({ cache_read_tokens: null })), /cache\)/);
+  assert.doesNotMatch(renderTurnUsage(perTurn(), { bar: false }), /share-track/);
+});
+
+test('Review and Story show each turn’s usage line from metrics.turns; only the timeline carries the bar', () => {
+  const story = sampleStory({ metrics: { turns: [perTurn()] } });
+  const review = renderReviewLens(story);
+  assert.equal((review.match(/class="turn-usage"/g) || []).length, 2);
+  assert.equal((review.match(/class="share-track"/g) || []).length, 1);
+  const timeline = review.slice(review.indexOf('<ol class="timeline">'), review.indexOf('</ol>'));
+  assert.match(timeline, /share-track/);
+  const card = renderStoryLens(story);
+  assert.match(card, /class="turn-usage"/);
+  assert.doesNotMatch(card, /share-track/);
+});
+
+test('a story without metrics.turns renders no usage line', () => {
+  assert.doesNotMatch(renderReviewLens(sampleStory()), /turn-usage/);
+  assert.doesNotMatch(renderStoryLens(sampleStory()), /turn-usage/);
 });

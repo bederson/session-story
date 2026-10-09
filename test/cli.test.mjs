@@ -321,6 +321,13 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.equal(brief.turns[0].duration_ms, 18000);
   assert.equal(brief.turns[0].tool_calls, 4);
   assert.equal(brief.environment.agent.version, '2.1.288');
+  assert.deepEqual(story.metrics.turns, [{
+    index: 1, duration_ms: 18000, duration_source: 'transcript',
+    input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, api_calls: 4, complete: true,
+    subagents: null, share: { output: 1, input: 1, duration: 0.973 },
+  }]);
+  assert.equal(brief.turns[0].output_tokens, 65);
+  assert.deepEqual(brief.turns[0].share, { output: 1, input: 1, duration: 0.973 });
 
   // non-strict validate accepts the new blocks; render still works and still has four lenses
   await run('node', [binPath, 'validate', storyJsonPath]);
@@ -331,6 +338,12 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.match(html, /id="lens-trace"/);
   assert.equal((html.match(/class="lens-tab"/g) || []).length, 5);
   assert.match(html, /data-jump-edit="tu3"/);
+  assert.match(html, /class="turn-usage"/);
+  assert.match(html, /65 out/);
+  assert.match(html, /1\.2k in/);
+  assert.match(html, /\(89% cache\)/);
+  // one turn: nothing to rank
+  assert.doesNotMatch(html, /class="trace-where"/);
 });
 
 test('extract --latest -o <file> writes to the given file (a boolean flag must not eat -o)', async () => {

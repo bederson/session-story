@@ -62,6 +62,12 @@ ${BASE_CSS}
 .edit-stats { display: inline-flex; gap: 8px; margin-left: auto; }
 .edit-stats .add { color: var(--add); }
 .edit-stats .del { color: var(--del); }
+.turn-usage { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 8px 0 0; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.tu-sub { color: var(--text-2); }
+.tu-partial { font-style: italic; }
+.share-track { flex-basis: 100%; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.share-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.turn-panel > .turn-usage { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); }
 
 /* ---- lens nav ----------------------------------------------------------- */
 .lens-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 10px var(--gutter); background: color-mix(in srgb, var(--surface) 86%, transparent); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border); }

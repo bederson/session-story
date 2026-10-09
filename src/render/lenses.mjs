@@ -62,6 +62,19 @@ export function formatCost(usd) {
   return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
 }
 
+export function formatLatency(ms) {
+  if (!isNum(ms)) return null;
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m ${total % 60}s`;
+}
+
+/** Where a turn's duration came from, for a title on the number. */
+export const DURATION_SOURCE_LABEL = { transcript: 'reported by Claude Code', derived: 'estimated from timestamps', unknown: 'not recorded' };
+
 /** Input tokens including cache reads and writes, or null if any part is unknown. */
 export function inputWithCache(u) {
   const parts = [u.input_tokens, u.cache_read_tokens, u.cache_creation_tokens];
@@ -334,6 +347,67 @@ export function renderHeader(story) {
   );
 }
 
+/** metrics.turns by turn index; empty for stories extracted before it existed. */
+const PER_TURN = new WeakMap();
+function perTurnFor(story, index) {
+  if (!PER_TURN.has(story)) {
+    const list = (story.metrics && Array.isArray(story.metrics.turns)) ? story.metrics.turns : [];
+    PER_TURN.set(story, new Map(list.map((t) => [t.index, t])));
+  }
+  return PER_TURN.get(story).get(index);
+}
+
+function percent(fraction) {
+  const p = Math.round(fraction * 100);
+  return fraction > 0 && p === 0 ? 1 : p;
+}
+
+function subagentPhrase(sub) {
+  if (!sub || !sub.count) return '';
+  const agents = `${sub.count} ${plural(sub.count, 'agent')}`;
+  if (!sub.with_usage || !isNum(sub.output_tokens)) return `<span class="tu-sub">${agents}, tokens not recorded</span>`;
+  const which = sub.with_usage < sub.count ? `${sub.with_usage} of ${agents}` : agents;
+  return `<span class="tu-sub">+ ${formatTokens(sub.output_tokens)} out in ${which}</span>`;
+}
+
+/**
+ * One turn's duration and tokens (an entry of `metrics.turns`), with a bar
+ * for its share of the session's output tokens. Unknown parts are left out;
+ * '' when nothing is known.
+ */
+export function renderTurnUsage(pt, { bar = true } = {}) {
+  if (!pt) return '';
+  const parts = [];
+  const duration = formatLatency(pt.duration_ms);
+  if (duration) {
+    const source = DURATION_SOURCE_LABEL[pt.duration_source] || DURATION_SOURCE_LABEL.unknown;
+    parts.push(`<span class="tu-dur" title="${source}">${duration}</span>`);
+  }
+  if (isNum(pt.output_tokens)) parts.push(`<span>${formatTokens(pt.output_tokens)} out</span>`);
+  const input = inputWithCache(pt);
+  if (input !== null) {
+    const cache = input > 0
+      ? ` <span class="tu-cache" title="read from the prompt cache">(${percent(pt.cache_read_tokens / input)}% cache)</span>`
+      : '';
+    parts.push(`<span>${formatTokens(input)} in${cache}</span>`);
+  } else if (isNum(pt.input_tokens)) {
+    parts.push(`<span>${formatTokens(pt.input_tokens)} in</span>`);
+  }
+  if (pt.complete === false) parts.push('<span class="tu-partial" title="Some API calls in this turn carried no usage">partial</span>');
+  const sub = subagentPhrase(pt.subagents);
+  if (parts.length === 0 && !sub) return '';
+  const share = pt.share && pt.share.output;
+  const track = bar && isNum(share)
+    ? `<span class="share-track" title="${percent(share)}% of the session’s output tokens">` +
+      `<span class="share-fill" style="width:${percent(share)}%"></span></span>`
+    : '';
+  return `<p class="turn-usage">${parts.join(' · ')}${sub ? ` ${sub}` : ''}${track}</p>`;
+}
+
+function turnUsage(story, turn, opts) {
+  return renderTurnUsage(perTurnFor(story, turn.index), opts);
+}
+
 function fileCountPhrase(edits) {
   const n = new Set(edits.map((e) => e.rel)).size;
   return `${n} ${plural(n, 'file')} changed`;
@@ -438,6 +512,7 @@ export function renderReviewLens(story) {
         `<blockquote class="turn-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         summaryHtml +
         renderActivityBar(turn, max) +
+        turnUsage(story, turn) +
         (turn.edits.length > 0
           ? `<p class="turn-filecount">${icon('files')}${dual(fileCountPhrase(inProject(turn.edits)), fileCountPhrase(turn.edits))}</p>`
           : '') +
@@ -463,6 +538,7 @@ export function renderReviewLens(story) {
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
+        turnUsage(story, turn, { bar: false }) +
         `<div class="panel-prompt-wrap"><blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
         renderReplies(turn) +
         renderFileFilter(turn.edits) +
@@ -577,6 +653,7 @@ export function renderStoryLens(story) {
         `<p class="story-summary">${escapeHtml(turn.summary || '')}</p>` +
         renderReplies(turn) +
         renderActivityBar(turn, max) +
+        turnUsage(story, turn, { bar: false }) +
         `<p class="story-filecount">${icon('files')}` +
         dual(fileCountPhrase(inProject(turn.edits)), fileCountPhrase(turn.edits)) + `</p>` +
         (editsHtml

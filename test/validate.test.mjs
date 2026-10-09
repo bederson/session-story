@@ -156,3 +156,13 @@ test('rejects metrics missing a group or with an unknown final_state, and a bad 
   story.turns[0].duration_source = 'guess';
   assert.ok(validateStory(story).errors.some((e) => /turns\[0\]\.duration_source/.test(e)));
 });
+
+test('accepts metrics with or without a per-turn list, and rejects a malformed one', () => {
+  const groups = { execution: {}, code: {}, validation: { final_state: 'none' }, reads: {}, usage: {} };
+  assert.deepEqual(validateStory(minimalStory({ metrics: { ...groups } })).errors, []);
+  assert.deepEqual(validateStory(minimalStory({ metrics: { ...groups, turns: [{ index: 1, duration_source: 'derived' }] } })).errors, []);
+  assert.ok(validateStory(minimalStory({ metrics: { ...groups, turns: 'x' } })).errors.some((e) => /metrics\.turns must be an array/.test(e)));
+  const bad = validateStory(minimalStory({ metrics: { ...groups, turns: [{ index: 'one', duration_source: 'guess' }] } })).errors;
+  assert.ok(bad.some((e) => /metrics\.turns\[0\]\.index/.test(e)));
+  assert.ok(bad.some((e) => /metrics\.turns\[0\]\.duration_source/.test(e)));
+});

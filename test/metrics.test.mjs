@@ -135,3 +135,89 @@ test('validationState reports only the first line of a multi-line last command, 
   assert.equal(validationState([run("python3 - <<'EOF'\nprint(1)\nEOF\nnpm test", 'ok')]).last_command, "python3 - <<'EOF'");
   assert.equal(validationState([run(`npm test ${'x'.repeat(300)}`, 'ok')]).last_command.length, 200);
 });
+
+const U = (input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, api_calls = 1, complete = true) =>
+  ({ input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, api_calls, models: ['claude-opus-5-5'], complete });
+
+test('metrics.turns gives each turn its duration, tokens, subagent tokens and share of the session', () => {
+  const turns = [
+    { index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], duration_ms: 9000, duration_source: 'transcript', usage: U(10, 100, 1000, 90, 3) },
+    { index: 2, id: 'u2', prompt: 'b', edits: [], bash: [], duration_ms: 5000, duration_source: 'derived', usage: U(5, 300, 500, 0, 2) },
+  ];
+  const events = [
+    { id: 'ag', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: U(5, 100, 0, 0, 4) },
+  ];
+  const costStates = [{
+    total_cost_usd: 1, has_unknown_model_cost: false,
+    model_usage: { 'claude-opus-5-5': { inputTokens: 20, outputTokens: 500, cacheReadInputTokens: 1500, cacheCreationInputTokens: 90 } },
+  }];
+  const m = computeMetrics(story({ turns, events, costStates }));
+  assert.deepEqual(m.turns, [
+    {
+      index: 1, duration_ms: 9000, duration_source: 'transcript',
+      input_tokens: 10, output_tokens: 100, cache_read_tokens: 1000, cache_creation_tokens: 90, api_calls: 3, complete: true,
+      subagents: { count: 1, with_usage: 1, input_tokens: 5, output_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0 },
+      share: { output: 0.4, input: 0.686, duration: 0.486 },
+    },
+    {
+      index: 2, duration_ms: 5000, duration_source: 'derived',
+      input_tokens: 5, output_tokens: 300, cache_read_tokens: 500, cache_creation_tokens: 0, api_calls: 2, complete: true,
+      subagents: null,
+      share: { output: 0.6, input: 0.314, duration: 0.27 },
+    },
+  ]);
+});
+
+test('a turn with no usage gets null tokens and shares but keeps its duration', () => {
+  const turns = [
+    { index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], duration_ms: 4000, duration_source: 'derived', usage: null },
+    { index: 2, id: 'u2', prompt: 'b', edits: [], bash: [], duration_ms: null, duration_source: 'unknown', usage: U(1, 10, 0, 0) },
+  ];
+  const [t1, t2] = computeMetrics(story({ turns })).turns;
+  assert.deepEqual(t1, {
+    index: 1, duration_ms: 4000, duration_source: 'derived',
+    input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, api_calls: null, complete: null,
+    subagents: null, share: { output: null, input: null, duration: 0.216 },
+  });
+  assert.equal(t2.share.output, 1);
+  assert.equal(t2.share.duration, null);
+});
+
+test('a subagent without usage is counted but contributes no tokens', () => {
+  const turns = [{ index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], duration_ms: null, duration_source: 'unknown', usage: U(1, 10, 0, 0) }];
+  const events = [
+    { id: 'a1', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: null },
+    { id: 'a2', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: null },
+  ];
+  const [t] = computeMetrics(story({ turns, events })).turns;
+  assert.deepEqual(t.subagents, { count: 2, with_usage: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null });
+  assert.equal(t.share.output, 1);
+});
+
+test('a turn whose only tokens came from subagents takes its share from them', () => {
+  const turns = [
+    { index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], usage: null },
+    { index: 2, id: 'u2', prompt: 'b', edits: [], bash: [], usage: U(0, 30, 0, 0) },
+  ];
+  const events = [{ id: 'a1', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: U(0, 10, 0, 0) }];
+  const [t1] = computeMetrics(story({ turns, events })).turns;
+  assert.equal(t1.output_tokens, null);
+  assert.equal(t1.subagents.output_tokens, 10);
+  assert.equal(t1.share.output, 0.25);
+});
+
+test('shares are null when the session totals are unknown', () => {
+  const session = { id: 's1', chain: ['s1'], started_at: null, ended_at: null };
+  const turns = [{ index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], duration_ms: 1000, duration_source: 'derived', usage: null }];
+  const [t] = computeMetrics(story({ turns, session })).turns;
+  assert.deepEqual(t.share, { output: null, input: null, duration: null });
+});
+
+test('an old story with no trace still gets metrics.turns, with no subagents', () => {
+  const old = { schema_version: 1, session: { id: 's1', started_at: null, ended_at: null }, turns: [{ index: 1, id: 'u1', prompt: 'a', edits: [], bash: [] }], files: [], totals: { turns: 1, files: 0, added: 0, removed: 0, edits: 0 } };
+  const [t] = computeMetrics(old).turns;
+  assert.equal(t.index, 1);
+  assert.equal(t.duration_ms, null);
+  assert.equal(t.duration_source, 'unknown');
+  assert.equal(t.subagents, null);
+});

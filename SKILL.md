@@ -49,9 +49,13 @@ session" / "/story".
    write resolutions. The brief also carries `metrics` (execution, code,
    validation, reads, usage — deterministic counts with `null` for anything
    the transcript did not record), `environment` (agent version and model
-   ids) and, per turn, `duration_ms` and `tool_calls`. Use them to inform
+   ids) and, per turn, `duration_ms`, `tool_calls`, `output_tokens` and
+   `share` (the turn's fraction of the session's output tokens, input
+   tokens and duration, subagents included). Use them to inform
    `report.outcome` and `outcome_note`; never restate or recompute them,
-   and never write a number the brief shows as `null`.
+   and never write a number the brief shows as `null`. When one turn
+   clearly dominated, you may say so in words ("most of the session went
+   into the redesign"), never as a number or a cost.
 
 2. **Summarize and write the report.** Using the brief projection from
    step 1, write directly into `<scratch>/story.json` with the Edit tool
@@ -114,8 +118,9 @@ session" / "/story".
 
 5. Report both paths — the story page and `.session-stories/index.html` —
    and the header numbers (turns, files, lines added/removed, outcome) to
-   the user. If the story has token usage, report output tokens and, when
-   recorded, the cost.
+   the user. If the story has token usage, report output tokens, the cost
+   when recorded, and which turn used the most output tokens (the Trace
+   tab's "Where it went" ranks them).
 
 ## Limits
 

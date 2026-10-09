@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasTrace, formatElapsed, formatLatency, formatTokens, formatCost, renderScorecard, renderMetrics,
-  eventGroups, renderTraceLens,
+  eventGroups, renderTraceLens, renderWhereItWent,
 } from '../src/render/trace-lens.mjs';
 
 function metrics(overrides = {}) {
@@ -184,4 +184,54 @@ test('filter buttons carry counts and the lens renders no hunk tables', () => {
 
 test('a trace with no events says so', () => {
   assert.match(renderTraceLens({ session: {}, turns: [], trace: { events: [] } }), /No events recorded\./);
+});
+
+function whereStory() {
+  const pt = (index, output, duration_ms, duration_source, subagents = null) => ({
+    index, duration_ms, duration_source,
+    input_tokens: output === null ? null : 1, output_tokens: output, cache_read_tokens: output === null ? null : 0, cache_creation_tokens: output === null ? null : 0,
+    api_calls: 1, complete: true, subagents, share: { output: null, input: null, duration: null },
+  });
+  return {
+    session: { id: 's1' },
+    turns: [
+      { index: 1, prompt: 'Plan it', summary: 'Planned the <work>.', edits: [] },
+      { index: 2, prompt: 'Build it', summary: 'Built it.', edits: [] },
+      { index: 3, prompt: 'Check it\nsecond line', summary: '', edits: [] },
+    ],
+    metrics: metrics({ turns: [
+      pt(1, 5000, 60000, 'transcript'),
+      pt(2, 40000, 300000, 'derived', { count: 1, with_usage: 1, input_tokens: 1, output_tokens: 45100, cache_read_tokens: 0, cache_creation_tokens: 0 }),
+      pt(3, null, 120000, 'transcript'),
+    ] }),
+  };
+}
+
+test('Where it went ranks turns by output tokens (main plus subagents) and by duration, each with a jump', () => {
+  const html = renderWhereItWent(whereStory());
+  assert.match(html, /^<div class="trace-where">/);
+  const [byTokens, byTime] = html.split('<h3>By duration</h3>');
+  assert.match(byTokens, /<h3>By output tokens<\/h3>/);
+  const order = (part) => [...part.matchAll(/class="where-row" data-turn="(\d+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order(byTokens), ['2', '1']);
+  assert.deepEqual(order(byTime), ['2', '3', '1']);
+  assert.match(byTokens, /title="40\.0k main \+ 45\.1k in 1 agent">85\.1k</);
+  assert.match(byTime, /title="estimated from timestamps">5m 0s</);
+  assert.match(byTime, /title="reported by Claude Code">2m 0s</);
+  assert.match(html, /Planned the &lt;work&gt;\./);
+  assert.match(byTime, /Check it</);
+  assert.doesNotMatch(byTime, /second line/);
+  assert.equal((html.match(/class="trace-jump" data-turn="2"/g) || []).length, 2);
+  assert.match(byTokens, /<span class="where-bar"><span style="width:100%"><\/span><\/span>/);
+});
+
+test('Where it went is left out for one turn, without metrics.turns, and in the full trace lens when absent', () => {
+  const one = whereStory();
+  one.metrics.turns = one.metrics.turns.slice(0, 1);
+  assert.equal(renderWhereItWent(one), '');
+  assert.equal(renderWhereItWent({ metrics: metrics() }), '');
+  assert.doesNotMatch(renderTraceLens(traceStory()), /trace-where/);
+  const story = { ...whereStory(), trace: { events: [] } };
+  const lens = renderTraceLens(story);
+  assert.ok(lens.indexOf('trace-where') < lens.indexOf('trace-filters'));
 });
