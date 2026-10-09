@@ -8,6 +8,7 @@
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
+import { inert } from './inert.mjs';
 import { plural, OUTCOME_LABELS } from './lenses.mjs';
 import { allCommands, allErrors, validationRuns, shortSha, VALIDATION_CATEGORIES } from '../ir/selectors.mjs';
 
@@ -17,6 +18,8 @@ import { allCommands, allErrors, validationRuns, shortSha, VALIDATION_CATEGORIES
  * the rest.
  */
 export const COMMAND_SHOWN_MAX = 400;
+/** Command rows shown before "Show all"; the rest are carried inert. */
+export const COMMANDS_SHOWN = 100;
 
 function commandText(command) {
   const text = String(command || '');
@@ -127,9 +130,16 @@ function renderCommands(turns) {
   const commands = allCommands(turns);
   if (commands.length === 0) return section('terminal', 'Commands executed', noneRecorded());
   const failed = commands.filter((c) => c.ok === false).length;
-  const rows = commands.map((c) => commandRow(c, { outputHere: !VALIDATION_CATEGORIES.has(c.category) })).join('');
+  const row = (c) => commandRow(c, { outputHere: !VALIDATION_CATEGORIES.has(c.category) });
+  const rows = commands.slice(0, COMMANDS_SHOWN).map(row).join('');
+  const rest = commands.slice(COMMANDS_SHOWN);
+  // A long session runs hundreds of commands; the rest stay inert until asked for.
+  const more = rest.length > 0
+    ? `<div class="cmd-rest">${inert(rest.map(row).join(''))}` +
+      `<button type="button" class="show-more">Show all ${commands.length} commands</button></div>`
+    : '';
   const summary = `<p class="report-count">${commands.length} ${plural(commands.length, 'command')}, ${failed} failed</p>`;
-  return section('terminal', 'Commands executed', `${summary}${rows}`);
+  return section('terminal', 'Commands executed', `${summary}${rows}${more}`);
 }
 
 function renderTests(turns) {

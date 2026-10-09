@@ -141,7 +141,7 @@ test('the page references nothing over the network', () => {
 test('the page script wires trace filters, failures-only and jumps to a Review edit', () => {
   const html = renderPage(Object.assign(sampleStory(), { trace: { events: [] } }));
   const script = html.slice(html.lastIndexOf('<script>'));
-  assert.match(script, /getElementById\('lens-trace'\)/);
+  assert.match(script, /trace: function \(traceLens\)/);
   assert.match(script, /setAttribute\('data-filter'/);
   assert.match(script, /classList\.toggle\('failures-only'\)/);
   assert.match(script, /dataset\.editId === editId/);
@@ -188,10 +188,22 @@ test('renderPage renders code on demand: on pick, file open, Story toggle, Full 
   assert.match(html, /function spliceRows\(baseText, hunks\)/);
   assert.match(html, /function renderPending\(container\)/);
   assert.match(html, /if \(!hidden\) renderPending\(edit\)/); // Review file pick
-  assert.match(html, /wireList\('\.file-tree-item', '\.file-panel', 'file', 'filePanel', renderPending\)/);
+  assert.match(html, /wireList\('\.file-tree-item', '\.file-panel', 'file', 'filePanel', renderPending, lens\)/);
   assert.match(html, /addEventListener\('toggle'/);
   assert.match(html, /renderShown\(\)/);
   assert.match(html, /addEventListener\('beforeprint', renderAll\)/);
+  assert.match(html, /function renderAll\(\) \{ activateAll\(document\); renderPending\(document\); \}/);
   assert.match(html, /<noscript><p class="no-js-note">/);
   assert.doesNotMatch(html, /fillFullRefs|data-full-ref/);
+});
+
+test('renderPage carries every lens inert and wires each the first time it is shown', () => {
+  const html = renderPage(Object.assign(storyWithCode(), { trace: { events: [] } }));
+  for (const lens of ['review', 'diff', 'story', 'report', 'trace']) {
+    assert.match(html, new RegExp(`id="lens-${lens}" role="tabpanel" aria-labelledby="tab-${lens}"><template data-inert>`));
+  }
+  assert.match(html, /function activate\(el\)/);
+  assert.match(html, /function ensureLens\(name\)/);
+  assert.match(html, /function showLens\(name\) \{\n    ensureLens\(name\);/);
+  assert.match(html, /<noscript><p class="no-js-note">This page needs JavaScript to show its views\.<\/p><\/noscript>/);
 });

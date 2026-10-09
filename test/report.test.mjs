@@ -184,3 +184,25 @@ test('a long command shows its opening and says how much was left out', async ()
   assert.match(html, new RegExp(`… ${command.length - COMMAND_SHOWN_MAX} more characters`));
   assert.doesNotMatch(html, /x{1000}/);
 });
+
+test('a long command list shows the first rows and carries the rest inert behind "Show all"', async () => {
+  const { COMMANDS_SHOWN } = await import('../src/render/report.mjs');
+  const story = sampleStory();
+  const total = COMMANDS_SHOWN + 50;
+  story.turns[0].bash = Array.from({ length: total }, (_, i) => (
+    { id: `b${i}`, command: `echo cmd-${i}`, description: '', category: 'other', ok: true, exit_code: 0, rejected: false, interrupted: false, output_tail: '' }
+  ));
+  const html = renderReportLens(story);
+  const [live, rest] = html.split('<div class="cmd-rest"><template data-inert>');
+
+  assert.ok(rest, 'the overflow is wrapped in an inert template');
+  assert.equal(live.split('class="cmd-row"').length - 1, COMMANDS_SHOWN);
+  assert.match(live, new RegExp(`echo cmd-${COMMANDS_SHOWN - 1}<`));
+  assert.match(rest, new RegExp(`echo cmd-${COMMANDS_SHOWN}<`));
+  assert.match(rest, new RegExp(`<button type="button" class="show-more">Show all ${total} commands</button>`));
+});
+
+test('a short command list has no "Show all"', () => {
+  const html = renderReportLens(sampleStory());
+  assert.doesNotMatch(html, /show-more|cmd-rest/);
+});

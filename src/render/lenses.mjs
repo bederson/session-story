@@ -1,5 +1,6 @@
 import { escapeHtml, renderEdit, renderViews } from './diff.mjs';
 import { icon } from './icons.mjs';
+import { inert } from './inert.mjs';
 import { buildFileBases } from '../ir/file-state.mjs';
 import { buildStoryData } from './story-data.mjs';
 import { inProject, shortSha } from '../ir/selectors.mjs';
@@ -487,9 +488,9 @@ function renderReplies(turn) {
  * Review lens: a timeline of turns on the left (numbered node on a rail,
  * full prompt, intent, activity bar, file count), each linked by data-turn
  * to a panel of that turn's edits. Selection between turns is handled by
- * the page's inline script. Every panel is in the page, but its code is a
- * placeholder the script renders when the reader picks a file, so without
- * JS the turns show stacked with a note in place of each diff.
+ * the page's inline script. Each panel's body is carried inert (inert.mjs)
+ * until its turn is selected, and its code is a placeholder the script
+ * renders when the reader picks a file.
  */
 export function renderReviewLens(story) {
   const max = maxTurnTotals(story.turns);
@@ -531,13 +532,14 @@ export function renderReviewLens(story) {
         : '';
       return (
         `<section class="turn-panel" data-turn-panel="${turn.index}">` +
+        inert(
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
         turnUsage(story, turn, { bar: false }) +
         `<div class="panel-prompt-wrap"><blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
         renderReplies(turn) +
         renderFileFilter(turn.edits) +
         filteredNote +
-        editsHtml +
+        editsHtml) +
         `</section>`
       );
     })
@@ -591,9 +593,10 @@ export function renderDiffLens(story) {
       return (
         `<section class="file-panel" data-file-panel="${escapeHtml(file.rel)}"` +
         `${file.outside_cwd ? ' data-outside="1"' : ''}>` +
+        inert(
         `<div class="panel-head"><span class="panel-title">${icon('code')}${escapeHtml(file.rel)}</span>` +
         `<span class="panel-meta"><span>${file.turns.length} ${plural(file.turns.length, 'turn')}</span>${file.churn ? '<span class="churn-note">rewritten later</span>' : ''}</span></div>` +
-        occurrences.join('') +
+        occurrences.join('')) +
         `</section>`
       );
     })
@@ -623,7 +626,8 @@ export function renderDiffLens(story) {
 
 /**
  * Story lens: readable narrative cards, one per turn along a rail, code
- * collapsed behind a native <details> toggle and rendered when it opens.
+ * collapsed behind a native <details> toggle, carried inert and rendered
+ * when it opens.
  */
 export function renderStoryLens(story) {
   const max = maxTurnTotals(story.turns);
@@ -649,7 +653,7 @@ export function renderStoryLens(story) {
         `<p class="story-filecount">${icon('files')}` +
         dual(fileCountPhrase(inProject(turn.edits)), fileCountPhrase(turn.edits)) + `</p>` +
         (editsHtml
-          ? `<details class="story-code"${codeOutside}><summary>${icon('code')}Show code</summary>${editsHtml}</details>`
+          ? `<details class="story-code"${codeOutside}><summary>${icon('code')}Show code</summary>${inert(editsHtml)}</details>`
           : '') +
         `</article>`
       );

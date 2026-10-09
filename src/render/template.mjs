@@ -2,6 +2,7 @@ import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle, storyDataFor } from './lenses.mjs';
 import { CLIENT_SOURCE } from './hunk-html.mjs';
+import { inert } from './inert.mjs';
 import { renderStoryData } from './story-data.mjs';
 import { renderReportLens } from './report.mjs';
 import { renderTraceLens, hasTrace, TRACE_CSS, TRACE_SCRIPT } from './trace-lens.mjs';
@@ -199,6 +200,8 @@ tr.hunk-line.del td.code::before { background: var(--del); }
 tr.hunk-line.del td.ln.old { background: var(--del-bg); color: var(--del); }
 .edit { min-width: 0; }
 .view { overflow-x: auto; }
+/* Off-screen code blocks skip layout and paint; a long file or turn renders only what is in view. */
+.edit, .occurrence { content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .turn-panel, .file-panel, .story-code { overflow-x: auto; }
 
 /* ---- diff lens ---------------------------------------------------------- */
@@ -266,6 +269,9 @@ ${OUTCOME_CSS}
 
 .cmd-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
 .cmd-row:first-of-type { border-top: none; }
+.cmd-rest > .cmd-row:first-of-type { border-top: 1px solid var(--border); }
+.show-more { display: inline-flex; align-items: center; margin-top: 10px; padding: 6px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent-ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.show-more:hover { border-color: var(--accent-ring); }
 .cmd-status { display: inline-flex; width: 16px; height: 16px; }
 .cmd-status.ok .icon { color: var(--add); }
 .cmd-status.fail .icon { color: var(--del); }
@@ -311,7 +317,8 @@ ${OUTCOME_CSS}
 .header-inner > :nth-child(6) { animation-delay: .20s; }
 .header-inner > :nth-child(7) { animation-delay: .24s; }
 .header-inner > :nth-child(8) { animation-delay: .28s; }
-.timeline-item, .story-card, .file-tree-item { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(.12s + var(--i, 0) * .035s); }
+/* Only the first few items stagger, so a long list settles within half a second. */
+.timeline-item, .story-card, .file-tree-item { animation: rise .4s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(.06s + min(var(--i, 0), 8) * .03s); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -338,7 +345,7 @@ ${TRACE_CSS}
 @media print {
   :root { --bg: #fff; --surface: #fff; --surface-2: #f6f6f6; --surface-3: #eee; --shadow-1: none; --shadow-2: none; }
   body { font-size: 12px; }
-  .lens-nav, .header-motif, .lens-hint { display: none !important; }
+  .lens-nav, .header-motif, .lens-hint, .show-more { display: none !important; }
   .lens-section, .turn-panel, .file-panel { display: block !important; }
   .file-filter { display: none !important; }
   .edit.file-hidden { display: block; }
@@ -348,6 +355,7 @@ ${TRACE_CSS}
   .story-code:not([open]) > *:not(summary) { display: block; }
   .timeline-item, .story-card, .turn-panel, .file-panel { break-inside: avoid; }
   * { animation: none !important; }
+  .edit, .occurrence { content-visibility: visible; }
 }
 `;
 
@@ -388,6 +396,9 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     }
     return storyData;
   }
+  // Parse the code data while the reader is still looking at the page, so the
+  // first diff they open does not wait on it.
+  if (window.requestIdleCallback) window.requestIdleCallback(codeData, { timeout: 4000 });
   // Story always shows hunks; Review and Diff show whichever Full file picks.
   function wanted(view) {
     var full = root.classList.contains('full-context');
@@ -417,12 +428,37 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       renderPending
     );
   }
+  // Markup the reader has not reached yet is carried in <template data-inert>
+  // (src/render/inert.mjs): parsed, but not styled, laid out or in the
+  // accessibility tree. activate() swaps a shell's own template for its
+  // content the first time that part is shown.
+  function activate(el) {
+    if (!el) return el;
+    for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.tagName === 'TEMPLATE' && c.hasAttribute('data-inert')) { c.replaceWith(c.content); break; }
+    }
+    return el;
+  }
+  function activateAll(container) {
+    var t;
+    while ((t = container.querySelector('template[data-inert]'))) t.replaceWith(t.content);
+  }
+  // A closed <details> carries its body inert: fill it before it opens (a
+  // summary click) or as it opens (script, keyboard), then render its code.
+  function openDetails(details) {
+    activate(details);
+    if (details.classList.contains('story-code')) renderPending(details);
+  }
+  document.addEventListener('click', function (e) {
+    var summary = e.target && e.target.closest ? e.target.closest('summary') : null;
+    if (summary && summary.parentNode && summary.parentNode.tagName === 'DETAILS' && !summary.parentNode.open) openDetails(summary.parentNode);
+  }, true);
   document.addEventListener('toggle', function (e) {
     var details = e.target;
-    if (details && details.open && details.classList && details.classList.contains('story-code')) renderPending(details);
+    if (details && details.open && details.tagName === 'DETAILS') openDetails(details);
   }, true);
-  // Print shows every panel, so it needs every view.
-  function renderAll() { renderPending(document); }
+  // Print shows every lens, panel and diff.
+  function renderAll() { activateAll(document); renderPending(document); }
   window.addEventListener('beforeprint', renderAll);
   if (window.matchMedia) {
     var printQuery = window.matchMedia('print');
@@ -431,35 +467,10 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     else if (printQuery.addListener) printQuery.addListener(onPrint);
   }
 
-  // Lens tabs, remembered in the URL hash.
-  var lensButtons = Array.prototype.slice.call(document.querySelectorAll('.lens-tab'));
-  var lensSections = Array.prototype.slice.call(document.querySelectorAll('.lens-section'));
-  function showLens(name) {
-    lensButtons.forEach(function (b) {
-      var on = b.dataset.lens === name;
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
-      b.tabIndex = on ? 0 : -1;
-    });
-    lensSections.forEach(function (s) { s.classList.toggle('active', s.id === 'lens-' + name); });
-    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
-  }
-  lensButtons.forEach(function (b, i) {
-    b.addEventListener('click', function () { showLens(b.dataset.lens); });
-    b.addEventListener('keydown', function (e) {
-      var delta = e.key === 'ArrowRight' ? 1 : (e.key === 'ArrowLeft' ? -1 : 0);
-      if (!delta) return;
-      var next = lensButtons[(i + delta + lensButtons.length) % lensButtons.length];
-      next.focus(); showLens(next.dataset.lens); e.preventDefault();
-    });
-  });
-  var initialLens = (location.hash || '#review').slice(1);
-  if (!document.getElementById('lens-' + initialLens)) initialLens = 'review';
-  showLens(initialLens);
-
   // Generic master/detail wiring for clickable list items -> panels.
-  function wireList(itemSelector, panelSelector, itemKey, panelKey, onActivate) {
-    var items = Array.prototype.slice.call(document.querySelectorAll(itemSelector));
-    var panels = Array.prototype.slice.call(document.querySelectorAll(panelSelector));
+  function wireList(itemSelector, panelSelector, itemKey, panelKey, onActivate, scope) {
+    var items = Array.prototype.slice.call(scope.querySelectorAll(itemSelector));
+    var panels = Array.prototype.slice.call(scope.querySelectorAll(panelSelector));
     function select(key) {
       items.forEach(function (item) {
         var on = item.dataset[itemKey] === key;
@@ -468,7 +479,7 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       });
       panels.forEach(function (panel) {
         var on = panel.dataset[panelKey] === key;
-        if (on && onActivate && !panel.classList.contains('active')) onActivate(panel);
+        if (on && !panel.classList.contains('active')) onActivate(activate(panel));
         panel.classList.toggle('active', on);
       });
     }
@@ -495,8 +506,12 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       if (!hidden) renderPending(edit);
     });
   }
-  Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn'), function (btn) {
-    btn.addEventListener('click', function () { filterPanelFiles(btn.closest('.turn-panel'), btn.dataset.fileFilter); });
+  // Delegated: file filter buttons only exist once their panel is activated.
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.file-filter-btn') : null;
+    if (btn) filterPanelFiles(btn.closest('.turn-panel'), btn.dataset.fileFilter);
+    var more = e.target && e.target.closest ? e.target.closest('.show-more') : null;
+    if (more) { activate(more.parentNode); more.remove(); }
   });
   // Hiding outside-project files must not leave a panel filtered to one of them.
   var scopeToggle = document.querySelector('.opt-toggle[data-opt="scope"]');
@@ -508,9 +523,6 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       });
     });
   }
-  // Every time a turn is opened its code starts hidden, until a file or
-  // "All changes" is picked.
-  var turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, null); });
 
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Scroll an edit block into view and flash it (the Trace lens's diff links).
@@ -520,35 +532,84 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     void target.offsetWidth; // restart the animation when the same edit is revealed twice
     target.classList.add('flash');
   }
-  var fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel', renderPending);
-  // Filter the Diff file tree by name. If the open file drops out, the
-  // first match opens instead, so the panel always belongs to a listed file.
-  var fileSearch = document.querySelector('.file-search input');
-  if (fileSearch) {
-    var noMatch = document.querySelector('.file-search-empty');
-    function listed(item) {
-      return !item.classList.contains('name-hidden') && (item.dataset.outside !== '1' || root.classList.contains('show-outside'));
-    }
-    function filterFiles() {
-      var q = fileSearch.value.trim().toLowerCase();
-      fileTree.items.forEach(function (item) {
-        item.classList.toggle('name-hidden', !!q && item.dataset.file.toLowerCase().indexOf(q) === -1);
-      });
-      var shown = fileTree.items.filter(listed);
-      if (noMatch) noMatch.hidden = shown.length > 0 || fileTree.items.length === 0;
-      var current = fileTree.items.filter(function (item) { return item.classList.contains('selected'); })[0];
-      if (shown.length > 0 && (!current || !listed(current))) fileTree.select(shown[0].dataset.file);
-    }
-    fileSearch.addEventListener('input', filterFiles);
-    if (scopeToggle) scopeToggle.addEventListener('click', filterFiles);
-  }
+
+  // Each lens is wired the first time it is shown, after its markup is live.
+  var turns = null;
+  var fileTree = null;
+  var LENS_INIT = {
+    review: function (lens) {
+      // Every time a turn is opened its code starts hidden, until a file or
+      // "All changes" is picked.
+      turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, null); }, lens);
+    },
+    diff: function (lens) {
+      fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel', renderPending, lens);
+      // Filter the Diff file tree by name. If the open file drops out, the
+      // first match opens instead, so the panel always belongs to a listed file.
+      var fileSearch = lens.querySelector('.file-search input');
+      if (!fileSearch) return;
+      var noMatch = lens.querySelector('.file-search-empty');
+      function listed(item) {
+        return !item.classList.contains('name-hidden') && (item.dataset.outside !== '1' || root.classList.contains('show-outside'));
+      }
+      function filterFiles() {
+        var q = fileSearch.value.trim().toLowerCase();
+        fileTree.items.forEach(function (item) {
+          item.classList.toggle('name-hidden', !!q && item.dataset.file.toLowerCase().indexOf(q) === -1);
+        });
+        var shown = fileTree.items.filter(listed);
+        if (noMatch) noMatch.hidden = shown.length > 0 || fileTree.items.length === 0;
+        var current = fileTree.items.filter(function (item) { return item.classList.contains('selected'); })[0];
+        if (shown.length > 0 && (!current || !listed(current))) fileTree.select(shown[0].dataset.file);
+      }
+      fileSearch.addEventListener('input', filterFiles);
+      if (scopeToggle) scopeToggle.addEventListener('click', filterFiles);
+      filterFiles();
+    },
+    story: function (lens) {
+      Array.prototype.forEach.call(lens.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
+    },
 ${TRACE_SCRIPT}
-  Array.prototype.forEach.call(document.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
+  };
+  function ensureLens(name) {
+    var lens = document.getElementById('lens-' + name);
+    if (!lens || lens.hasAttribute('data-ready')) return lens;
+    lens.setAttribute('data-ready', '');
+    activate(lens);
+    if (LENS_INIT[name]) LENS_INIT[name](lens);
+    return lens;
+  }
+
+  // Lens tabs, remembered in the URL hash.
+  var lensButtons = Array.prototype.slice.call(document.querySelectorAll('.lens-tab'));
+  var lensSections = Array.prototype.slice.call(document.querySelectorAll('.lens-section'));
+  function showLens(name) {
+    ensureLens(name);
+    lensButtons.forEach(function (b) {
+      var on = b.dataset.lens === name;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    lensSections.forEach(function (s) { s.classList.toggle('active', s.id === 'lens-' + name); });
+    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+  lensButtons.forEach(function (b, i) {
+    b.addEventListener('click', function () { showLens(b.dataset.lens); });
+    b.addEventListener('keydown', function (e) {
+      var delta = e.key === 'ArrowRight' ? 1 : (e.key === 'ArrowLeft' ? -1 : 0);
+      if (!delta) return;
+      var next = lensButtons[(i + delta + lensButtons.length) % lensButtons.length];
+      next.focus(); showLens(next.dataset.lens); e.preventDefault();
+    });
+  });
+  var initialLens = (location.hash || '#review').slice(1);
+  if (!document.getElementById('lens-' + initialLens)) initialLens = 'review';
+  showLens(initialLens);
 
   // j / k move between turns in the review lens.
   document.addEventListener('keydown', function (e) {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-    if (!document.getElementById('lens-review').classList.contains('active')) return;
+    if (!turns || !document.getElementById('lens-review').classList.contains('active')) return;
     var idx = turns.items.findIndex(function (i) { return i.classList.contains('selected'); });
     if (e.key === 'j' && idx < turns.items.length - 1) turns.items[idx + 1].click();
     if (e.key === 'k' && idx > 0) turns.items[idx - 1].click();
@@ -652,13 +713,13 @@ export function renderPage(story, opts = {}) {
     `</span>` +
     themeToggleButton() +
     `</nav>\n` +
-    `<noscript><p class="no-js-note">JavaScript is off, so diffs are not shown. Everything else on this page still works.</p></noscript>\n` +
-    `<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review">${renderReviewLens(story)}</section>\n` +
-    `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${renderDiffLens(story)}</section>\n` +
-    `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${renderStoryLens(story)}</section>\n` +
-    `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${renderReportLens(story)}</section>\n` +
+    `<noscript><p class="no-js-note">This page needs JavaScript to show its views.</p></noscript>\n` +
+    `<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review">${inert(renderReviewLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${inert(renderDiffLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${inert(renderStoryLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${inert(renderReportLens(story))}</section>\n` +
     (hasTrace(story)
-      ? `<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">${renderTraceLens(story)}</section>\n`
+      ? `<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">${inert(renderTraceLens(story))}</section>\n`
       : '') +
     renderStoryData(storyDataFor(story).data) + `\n` +
     `<script>${SCRIPT}</script>\n` +

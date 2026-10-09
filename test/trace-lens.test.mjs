@@ -235,3 +235,9 @@ test('Where it went is left out for one turn, without metrics.turns, and in the 
   const lens = renderTraceLens(story);
   assert.ok(lens.indexOf('trace-where') < lens.indexOf('trace-filters'));
 });
+
+test('a trace event carries its detail rows inert until the row is opened', () => {
+  const html = renderTraceLens(traceStory());
+  assert.match(html, /<\/summary><template data-inert><dl class="trace-detail">/);
+  assert.doesNotMatch(html, /<\/summary><dl class="trace-detail">/);
+});

@@ -10,6 +10,7 @@
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
+import { inert } from './inert.mjs';
 import {
   statTile, plural, dual, formatTokens, formatCost, inputWithCache, formatLatency, DURATION_SOURCE_LABEL,
 } from './lenses.mjs';
@@ -275,7 +276,7 @@ function renderEvent(event, ctx) {
     `<code class="trace-summary">${escapeHtml(event.summary || '')}</code>` +
     `<span class="trace-dur">${formatLatency(event.duration_ms) || '—'}</span>` +
     `</summary>` +
-    renderDetail(event, ctx) +
+    inert(renderDetail(event, ctx)) +
     `</details></li>`
   );
 }
@@ -455,9 +456,10 @@ html.js #lens-trace.failures-only .trace-event:not(.trace-prompt):not([data-grou
  * provides root, showLens, turns, reduceMotion, revealEdit, filterPanelFiles and
  * renderPending.
  */
+// The Trace lens's initialiser: an entry in the page script's LENS_INIT,
+// run the first time the lens is shown, once its markup is live.
 export const TRACE_SCRIPT = `
-  var traceLens = document.getElementById('lens-trace');
-  if (traceLens) {
+    trace: function (traceLens) {
     var traceFilters = Array.prototype.slice.call(traceLens.querySelectorAll('[data-trace-filter]'));
     var setTraceFilter = function (name) {
       traceLens.setAttribute('data-filter', name);
@@ -505,5 +507,5 @@ export const TRACE_SCRIPT = `
       revealEdit(target);
     });
     setTraceFilter('all');
-  }
+    },
 `;

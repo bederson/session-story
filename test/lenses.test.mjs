@@ -175,6 +175,7 @@ test('renderDiffLens lists a file tree entry and a panel per file, with each hun
 
   assert.match(html, /data-file="src\/Panel\.tsx"/);
   assert.match(html, /data-file-panel="src\/Panel\.tsx"/);
+  assert.match(html, /data-file-panel="src\/Panel\.tsx"><template data-inert><div class="panel-head">/);
   const turnTagMatches = html.match(/class="turn-tag"/g) || [];
   assert.equal(turnTagMatches.length, 2);
   assert.match(html, /title="Add a title prop"/);
@@ -700,4 +701,14 @@ test('Review and Story show each turn’s usage line from metrics.turns; only th
 test('a story without metrics.turns renders no usage line', () => {
   assert.doesNotMatch(renderReviewLens(sampleStory()), /turn-usage/);
   assert.doesNotMatch(renderStoryLens(sampleStory()), /turn-usage/);
+});
+
+test('turn panels and Story code carry their bodies inert inside a live shell', () => {
+  const story = sampleStory();
+  const review = renderReviewLens(story);
+  assert.match(review, /<section class="turn-panel" data-turn-panel="1"><template data-inert><div class="panel-head">/);
+  const storyHtml = renderStoryLens(story);
+  if (storyHtml.includes('story-code')) {
+    assert.match(storyHtml, /Show code<\/summary><template data-inert>/);
+  }
 });
