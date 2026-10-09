@@ -5,7 +5,7 @@
  * is involved and the result is exact.
  */
 
-import { escapeHtml } from './diff.mjs';
+import { spliceRows, fullTableHtml } from './hunk-html.mjs';
 
 /**
  * Bounds on the full-file view, so opting into it cannot bloat a shareable
@@ -18,12 +18,6 @@ export const FULL_VIEW_MAX_LINES = 2000;
 export const FULL_VIEW_MAX_CHARS = 80000;
 export const FULL_VIEW_BUDGET_CHARS = 2000000;
 
-function splitLines(text) {
-  const lines = text.split('\n');
-  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  return lines;
-}
-
 /**
  * @param {string|null} baseText - the file as it stood before the edit
  * @param {Array<object>} hunks - structuredPatch hunks for that edit
@@ -32,36 +26,8 @@ function splitLines(text) {
 export function spliceFullFile(baseText, hunks) {
   if (typeof baseText !== 'string') return null;
   if (baseText.length > FULL_VIEW_MAX_CHARS) return null;
-  const oldLines = splitLines(baseText);
-  if (oldLines.length > FULL_VIEW_MAX_LINES) return null;
-
-  const ordered = [...(hunks || [])].sort((a, b) => a.oldStart - b.oldStart);
-  const rows = [];
-  let cursor = 1; // next untouched old line to copy across (1-based)
-  let newNo = 1;
-
-  for (const hunk of ordered) {
-    const start = Math.max(1, hunk.oldStart);
-    for (; cursor < start; cursor++) {
-      rows.push({ kind: 'ctx', oldNo: cursor, newNo, text: oldLines[cursor - 1] ?? '' });
-      newNo++;
-    }
-
-    let oldNo = start;
-    newNo = hunk.newStart;
-    for (const line of hunk.lines) {
-      const text = line.slice(1);
-      if (line.startsWith('+')) rows.push({ kind: 'add', oldNo: null, newNo: newNo++, text });
-      else if (line.startsWith('-')) rows.push({ kind: 'del', oldNo: oldNo++, newNo: null, text });
-      else rows.push({ kind: 'ctx', oldNo: oldNo++, newNo: newNo++, text });
-    }
-    cursor = Math.max(cursor, hunk.oldStart + hunk.oldLines);
-  }
-
-  for (; cursor <= oldLines.length; cursor++) {
-    rows.push({ kind: 'ctx', oldNo: cursor, newNo, text: oldLines[cursor - 1] });
-    newNo++;
-  }
+  if (baseText.split('\n').length - (baseText.endsWith('\n') ? 1 : 0) > FULL_VIEW_MAX_LINES) return null;
+  const rows = spliceRows(baseText, hunks);
 
   // The base check alone lets a large new file through: it starts from ''.
   if (rows.length > FULL_VIEW_MAX_LINES) return null;
@@ -78,16 +44,7 @@ export function renderFullFile(baseText, hunks) {
   const rows = spliceFullFile(baseText, hunks);
   if (!rows) return '';
 
-  const body = rows
-    .map((row) =>
-      `<tr class="hunk-line ${row.kind}">` +
-      `<td class="ln old">${row.oldNo === null ? '' : row.oldNo}</td>` +
-      `<td class="ln new">${row.newNo === null ? '' : row.newNo}</td>` +
-      `<td class="code">${escapeHtml(row.text)}</td>` +
-      `</tr>`)
-    .join('');
-
-  return `<table class="hunk full">${body}</table>`;
+  return fullTableHtml(rows);
 }
 
 /**

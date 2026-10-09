@@ -5,24 +5,9 @@
 
 import { icon } from './icons.mjs';
 import { renderFullFile } from './full-view.mjs';
+import { escapeHtml, hunkTableHtml } from './hunk-html.mjs';
 
-const ESCAPE_MAP = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-export function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
-}
-
-function lineKind(line) {
-  if (line.startsWith('+')) return 'add';
-  if (line.startsWith('-')) return 'del';
-  return 'ctx';
-}
+export { escapeHtml };
 
 /**
  * Render one structuredPatch hunk as an HTML <table> of lines, tracking
@@ -31,35 +16,7 @@ function lineKind(line) {
  * @returns {string}
  */
 export function renderHunk(hunk) {
-  let oldLine = hunk.oldStart;
-  let newLine = hunk.newStart;
-  const rows = hunk.lines.map((line) => {
-    const kind = lineKind(line);
-    const code = escapeHtml(line.slice(1));
-    let oldCell = '';
-    let newCell = '';
-    if (kind === 'ctx') {
-      oldCell = String(oldLine);
-      newCell = String(newLine);
-      oldLine++;
-      newLine++;
-    } else if (kind === 'del') {
-      oldCell = String(oldLine);
-      oldLine++;
-    } else {
-      newCell = String(newLine);
-      newLine++;
-    }
-    return (
-      `<tr class="hunk-line ${kind}">` +
-      `<td class="ln old">${oldCell}</td>` +
-      `<td class="ln new">${newCell}</td>` +
-      `<td class="code">${code}</td>` +
-      `</tr>`
-    );
-  });
-
-  return `<table class="hunk">${rows.join('')}</table>`;
+  return hunkTableHtml(hunk);
 }
 
 /**
