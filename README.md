@@ -103,6 +103,7 @@ Two toggles in the nav apply across the views, and persist across visits:
 - **Reconstructs intent, not just diffs** — links every edit back to the prompt that caused it, in the order it happened.
 - **Five views, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened", Trace for whoever builds or debugs the agent; no server needed to view any of them.
 - **Zero runtime dependencies** — pure Node.js, inline CSS/JS, works over `file://`.
+- **Stays light on long sessions** — each distinct diff is carried once as data and rendered when you open it, so a 36-turn session is a ~5 MB page that opens quickly. Diffs need JavaScript; printing renders them all.
 - **Typed IR, validated before render** — `story.json` follows [`schemas/story.schema.json`](schemas/story.schema.json); `validate` checks its shape and, in `--strict` mode, that every turn and the session have a summary.
 - **Honest about blind spots** — a tool call whose result never arrived is shown as "edit attempted, result unknown" instead of causing an error, and untracked shell edits are disclosed in the page header rather than silently dropped.
 
