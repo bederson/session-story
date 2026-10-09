@@ -98,6 +98,9 @@ html.show-outside .only-when-filtered { display: none; }
 html.show-outside .session-strip[data-scope="all"], html.show-outside .bar-track[data-scope="all"] { display: flex; }
 html.show-outside .session-strip[data-scope="in"], html.show-outside .bar-track[data-scope="in"] { display: none; }
 .view-full { display: none; }
+/* Code views are rendered by the page script; say so when it cannot run. */
+html:not(.js) .view-hunks[data-diff]::before { content: "This diff needs JavaScript to show."; display: block; padding: 12px 16px; color: var(--text-3); font-size: 12.5px; font-style: italic; }
+.no-js-note { max-width: 1240px; margin: 12px auto 0; padding: 0 var(--gutter); color: var(--text-2); font-size: 13px; }
 html.full-context #lens-review .view-full, html.full-context #lens-diff .view-full { display: block; }
 html.full-context #lens-review .view-hunks, html.full-context #lens-diff .view-hunks { display: none; }
 /* #lens-story always shows just the changes, so the toggle never empties a card. */
@@ -368,29 +371,64 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       var set = root.classList.toggle(opt.cls);
       try { localStorage.setItem(opt.key, set ? opt.whenSet : opt.whenUnset); } catch (e) {}
       sync();
-      fillFullRefs();
+      if (btn.dataset.opt === 'view') renderShown();
     });
     sync();
   });
-  // The Diff lens carries no full-file views of its own: each slot names the
-  // edit whose view the Review lens holds, copied in when Full file is on.
-  function fillFullRefs() {
-    if (!root.classList.contains('full-context')) return;
-    var slots = document.querySelectorAll('#lens-diff .view-full[data-full-ref]');
-    if (slots.length === 0) return;
-    // Match on dataset rather than a selector: ids may need CSS escaping.
-    var views = {};
-    Array.prototype.forEach.call(document.querySelectorAll('#lens-review .edit-header[data-edit-id]'), function (header) {
-      var view = header.parentNode.querySelector('.view-full');
-      if (view && !views[header.dataset.editId]) views[header.dataset.editId] = view;
-    });
-    Array.prototype.forEach.call(slots, function (slot) {
-      var view = views[slot.dataset.fullRef];
-      if (view) slot.innerHTML = view.innerHTML;
-      slot.removeAttribute('data-full-ref');
-    });
+  // Code is not in the markup: each .view names an entry in the story data
+  // and is rendered the first time it is shown (src/render/story-data.mjs).
+  var storyData = null;
+  function codeData() {
+    if (!storyData) {
+      var el = document.getElementById('story-data');
+      try { storyData = JSON.parse(el ? el.textContent : '{}'); } catch (e) { storyData = {}; }
+      storyData.diffs = storyData.diffs || {};
+      storyData.bases = storyData.bases || {};
+    }
+    return storyData;
   }
-  fillFullRefs();
+  // Story always shows hunks; Review and Diff show whichever Full file picks.
+  function wanted(view) {
+    var full = root.classList.contains('full-context');
+    if (view.classList.contains('view-full')) return full;
+    return !full || !view.closest('#lens-review, #lens-diff');
+  }
+  function renderView(view) {
+    view.setAttribute('data-done', '');
+    var data = codeData();
+    var hunks = data.diffs[view.dataset.diff] || [];
+    if (view.classList.contains('view-full')) {
+      var base = data.bases[view.dataset.base];
+      if (typeof base === 'string') view.insertAdjacentHTML('beforeend', fullTableHtml(spliceRows(base, hunks)));
+    } else {
+      view.innerHTML = hunksHtml(hunks);
+    }
+  }
+  function renderPending(container) {
+    if (!container) return;
+    var views = container.querySelectorAll('.view-hunks[data-diff]:not([data-done]), .view-full[data-base]:not([data-done])');
+    Array.prototype.forEach.call(views, function (view) { if (wanted(view)) renderView(view); });
+  }
+  // What is on screen now: the open turn's picked edits, the open file, open Story cards.
+  function renderShown() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.turn-panel.active .edit:not(.file-hidden), .file-panel.active, details.story-code[open]'),
+      renderPending
+    );
+  }
+  document.addEventListener('toggle', function (e) {
+    var details = e.target;
+    if (details && details.open && details.classList && details.classList.contains('story-code')) renderPending(details);
+  }, true);
+  // Print shows every panel, so it needs every view.
+  function renderAll() { renderPending(document); }
+  window.addEventListener('beforeprint', renderAll);
+  if (window.matchMedia) {
+    var printQuery = window.matchMedia('print');
+    var onPrint = function (m) { if (m.matches) renderAll(); };
+    if (printQuery.addEventListener) printQuery.addEventListener('change', onPrint);
+    else if (printQuery.addListener) printQuery.addListener(onPrint);
+  }
 
   // Lens tabs, remembered in the URL hash.
   var lensButtons = Array.prototype.slice.call(document.querySelectorAll('.lens-tab'));
@@ -451,7 +489,9 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       btn.setAttribute('aria-pressed', String(btn.dataset.fileFilter === file));
     });
     Array.prototype.forEach.call(panel.querySelectorAll('.edit'), function (edit) {
-      edit.classList.toggle('file-hidden', file === null || (!!file && edit.dataset.file !== file));
+      var hidden = file === null || (!!file && edit.dataset.file !== file);
+      edit.classList.toggle('file-hidden', hidden);
+      if (!hidden) renderPending(edit);
     });
   }
   Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn'), function (btn) {
@@ -479,7 +519,7 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     void target.offsetWidth; // restart the animation when the same edit is revealed twice
     target.classList.add('flash');
   }
-  var fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel');
+  var fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel', renderPending);
   // Filter the Diff file tree by name. If the open file drops out, the
   // first match opens instead, so the panel always belongs to a listed file.
   var fileSearch = document.querySelector('.file-search input');
@@ -611,6 +651,7 @@ export function renderPage(story, opts = {}) {
     `</span>` +
     themeToggleButton() +
     `</nav>\n` +
+    `<noscript><p class="no-js-note">JavaScript is off, so diffs are not shown. Everything else on this page still works.</p></noscript>\n` +
     `<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review">${renderReviewLens(story)}</section>\n` +
     `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${renderDiffLens(story)}</section>\n` +
     `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${renderStoryLens(story)}</section>\n` +

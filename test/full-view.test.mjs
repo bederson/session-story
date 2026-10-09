@@ -55,10 +55,10 @@ test('renderFullFile escapes the untouched file content it copies in', () => {
   assert.doesNotMatch(html, /<b>/);
 });
 
-test('renderFullFile marks a view built from the file as it stands on disk as approximate', async () => {
+test('a full view built from the file as it stands on disk is marked approximate', async () => {
   const { renderViews } = await import('../src/render/diff.mjs');
 
-  const html = renderViews([{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }], 'a\nb\n', true);
+  const html = renderViews('d1', { base: 'b1' }, true);
 
   assert.match(html, /class="approx-note"/);
   assert.match(html, /current contents/i);
@@ -81,66 +81,33 @@ test('spliceFullFile refuses a result too large for the page, even when the base
   assert.equal(spliceFullFile('', [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: heavy }]), null);
 });
 
-function planStory(turnEdits) {
-  return {
-    turns: turnEdits.map((edits, i) => ({ index: i + 1, edits })),
-  };
-}
-
-function planEdit(id, extra = {}) {
-  return { id, rel: `${id}.txt`, result: 'ok', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }], ...extra };
-}
-
-test('planFullViews spends the page budget on the newest turns first and marks the rest as left out', async () => {
-  const { planFullViews } = await import('../src/render/full-view.mjs');
-  const base = 'a\n' + 'line of code\n'.repeat(400);
-  const story = planStory([[planEdit('old')], [planEdit('mid')], [planEdit('new')]]);
-  const bases = new Map([['old', base], ['mid', base], ['new', base]]);
-  const one = renderFullFile(base, story.turns[0].edits[0].hunks).length;
-
-  const plan = planFullViews(story, bases, one * 2);
-
-  assert.match(plan.get('new'), /<table class="hunk full">/);
-  assert.match(plan.get('mid'), /<table class="hunk full">/);
-  assert.equal(plan.get('old'), null, 'out of budget');
-});
-
-test('planFullViews leaves out edits that never get a full view, and records "unavailable" as an empty string', async () => {
-  const { planFullViews } = await import('../src/render/full-view.mjs');
-  const story = planStory([[
-    planEdit('outside', { outside_cwd: true }),
-    planEdit('shared', { combined_into: 2 }),
-    planEdit('failed', { result: 'error' }),
-    planEdit('nobase'),
-  ]]);
-
-  const plan = planFullViews(story, new Map());
-
-  assert.equal(plan.has('outside'), false);
-  assert.equal(plan.has('shared'), false);
-  assert.equal(plan.has('failed'), false);
-  assert.equal(plan.get('nobase'), '');
-});
-
-test('renderViews places a planned full view, a reference to one, or a note for each other case', async () => {
-  const { renderViews } = await import('../src/render/diff.mjs');
-  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }];
-
-  assert.match(renderViews(hunks, null, false, { html: '<table class="hunk full"></table>' }), /<div class="view view-full"><table class="hunk full">/);
-  assert.match(renderViews(hunks, null, false, { html: '' }), /did not record its contents/);
-  assert.match(renderViews(hunks, null, false, { ref: 'e"1' }), /<div class="view view-full" data-full-ref="e&quot;1"><\/div>/);
-  assert.match(renderViews(hunks, null, false, 'budget'), /left out to keep the page small/i);
-});
-
-test('renderViews shows a placeholder instead of splicing the file when told to skip', async () => {
+test('renderViews leaves code out of the markup: placeholders name the diff and base in the story data', async () => {
   const { renderViews } = await import('../src/render/diff.mjs');
 
-  const html = renderViews(
-    [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+A'] }],
-    'a\nb\n', false, 'skip'
-  );
+  const html = renderViews('d1', { base: 'b"1' });
+
+  assert.match(html, /<div class="view view-hunks" data-diff="d1"><\/div>/);
+  assert.match(html, /<div class="view view-full" data-diff="d1" data-base="b&quot;1"><\/div>/);
+  assert.doesNotMatch(html, /<table/);
+  assert.doesNotMatch(html, /approx-note/);
+});
+
+test('renderViews says why a full view is missing, and Story gets the hunks pane only', async () => {
+  const { renderViews } = await import('../src/render/diff.mjs');
+
+  assert.match(renderViews('d1', ''), /did not record its contents/);
+  assert.match(renderViews('d1', 'budget'), /left out to keep the page small/i);
+  assert.match(renderViews('d1', 'combined'), /turn this diff is counted under/i);
+  assert.equal(renderViews('d1', false), '<div class="view view-hunks" data-diff="d1"></div>');
+  assert.equal(renderViews(null, false), '<div class="view view-hunks"></div>');
+});
+
+test('renderViews shows a note instead of a full-view placeholder when told to skip', async () => {
+  const { renderViews } = await import('../src/render/diff.mjs');
+
+  const html = renderViews('d1', 'skip');
 
   assert.match(html, /class="view view-full"/);
-  assert.doesNotMatch(html, /<table class="hunk full">/);
+  assert.doesNotMatch(html, /data-base/);
   assert.match(html, /outside the project/i);
 });

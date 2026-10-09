@@ -148,9 +148,50 @@ test('the page script wires trace filters, failures-only and jumps to a Review e
   assert.match(script, /function revealEdit\(target\)/);
 });
 
-test('renderPage fills the Diff lens full-file slots from the Review copies when Full file is on', () => {
-  const html = renderPage(sampleStory());
+function storyWithCode() {
+  const story = sampleStory();
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: ['-a', '+</script><!--<script>', '+<b>"x"</b>'] }];
+  story.turns[0].edits = [{
+    id: 'e1', tool: 'Write', file: '/proj/a.html', rel: 'a.html', kind: 'update', result: 'ok',
+    before: 'a\n', hunks, stats: { added: 2, removed: 1 },
+  }];
+  story.files = [{ rel: 'a.html', language: 'html', turns: [1], churn: false, stats: { added: 2, removed: 1 } }];
+  story.totals = { turns: 1, files: 1, added: 2, removed: 1, edits: 1 };
+  return story;
+}
 
-  assert.match(html, /function fillFullRefs\(\)/);
-  assert.match(html, /data-full-ref/);
+function storyDataOf(html) {
+  const blocks = [...html.matchAll(/<script type="application\/json" id="story-data">([^]*?)<\/script>/g)];
+  assert.equal(blocks.length, 1);
+  return { text: blocks[0][1], data: JSON.parse(blocks[0][1]) };
+}
+
+test('renderPage carries the code once as inert JSON and renders no diff tables in the markup', () => {
+  const html = renderPage(storyWithCode());
+  const { text, data } = storyDataOf(html);
+
+  // Code that would close or derail the script element survives the round trip.
+  assert.doesNotMatch(text, /<\/|<!--/);
+  const [key] = Object.keys(data.diffs);
+  assert.deepEqual(data.diffs[key][0].lines, ['-a', '+</script><!--<script>', '+<b>"x"</b>']);
+  assert.deepEqual(Object.values(data.bases), ['a\n']);
+  // Review, Diff and Story each hold a placeholder naming the same entry.
+  const markup = html.replace(/<script[^>]*>[^]*?<\/script>/g, '');
+  assert.equal(markup.split(`class="view view-hunks" data-diff="${key}"`).length - 1, 3);
+  assert.doesNotMatch(markup, /<table class="hunk/);
+});
+
+test('renderPage renders code on demand: on pick, file open, Story toggle, Full file, Trace jump and print', () => {
+  const html = renderPage(storyWithCode());
+
+  assert.match(html, /function hunkTableHtml\(hunk\)/);
+  assert.match(html, /function spliceRows\(baseText, hunks\)/);
+  assert.match(html, /function renderPending\(container\)/);
+  assert.match(html, /if \(!hidden\) renderPending\(edit\)/); // Review file pick
+  assert.match(html, /wireList\('\.file-tree-item', '\.file-panel', 'file', 'filePanel', renderPending\)/);
+  assert.match(html, /addEventListener\('toggle'/);
+  assert.match(html, /renderShown\(\)/);
+  assert.match(html, /addEventListener\('beforeprint', renderAll\)/);
+  assert.match(html, /<noscript><p class="no-js-note">/);
+  assert.doesNotMatch(html, /fillFullRefs|data-full-ref/);
 });

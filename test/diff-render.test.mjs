@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { escapeHtml, renderHunk, renderEdit } from '../src/render/diff.mjs';
+import { contentKey } from '../src/render/story-data.mjs';
 
 test('escapeHtml escapes <, >, &, and quotes', () => {
   assert.equal(escapeHtml('<script>a && b</script> "q" \'s\''), '&lt;script&gt;a &amp;&amp; b&lt;/script&gt; &quot;q&quot; &#39;s&#39;');
@@ -45,7 +46,8 @@ test('renderEdit wraps a file header and all of its hunks, marking creates and s
   const html = renderEdit(edit);
 
   assert.match(html, /src\/a\.ts/);
-  assert.match(html, /class="hunk"/);
+  // The code itself is rendered by the page from the story data, keyed by content.
+  assert.match(html, new RegExp(`<div class="view view-hunks" data-diff="${contentKey(edit.hunks)}"></div>`));
 });
 
 test('renderEdit shows a "no result" note for an edit with an unknown result', async () => {
@@ -67,7 +69,7 @@ test('renderEdit shows the error message for an edit that failed', async () => {
   assert.match(html, /File does not exist\./);
 });
 
-test('renderEdit shows the hunks and, when the pre-edit text is known, the whole file around them', async () => {
+test('renderEdit points both panes at the story data when a full view is planned', async () => {
   const { renderEdit } = await import('../src/render/diff.mjs');
   const edit = {
     id: 'e1', rel: 'a.txt', kind: 'update', by_subagent: null, result: 'ok',
@@ -75,22 +77,18 @@ test('renderEdit shows the hunks and, when the pre-edit text is known, the whole
     stats: { added: 1, removed: 1 },
   };
 
-  const html = renderEdit(edit, { base: 'a\nb\nc\n' });
+  const html = renderEdit(edit, { diffKey: 'd1', fullView: { base: 'b1' } });
 
-  assert.match(html, /class="view view-hunks"/);
-  assert.match(html, /class="view view-full"/);
-  assert.match(html, /<table class="hunk">/);
-  assert.match(html, /<table class="hunk full">/);
-  // the full view carries the lines the hunk never mentioned
-  assert.match(html, /class="code">a</);
-  assert.match(html, /class="code">c</);
+  assert.match(html, /<div class="view view-hunks" data-diff="d1"><\/div>/);
+  assert.match(html, /<div class="view view-full" data-diff="d1" data-base="b1"><\/div>/);
+  assert.doesNotMatch(html, /<table/);
 });
 
 test('renderEdit says so when no pre-edit text could be reconstructed for the full view', async () => {
   const { renderEdit } = await import('../src/render/diff.mjs');
   const edit = { id: 'e1', rel: 'a.txt', kind: 'update', by_subagent: null, result: 'ok', hunks: [], stats: { added: 0, removed: 0 } };
 
-  const html = renderEdit(edit, { base: null });
+  const html = renderEdit(edit);
 
   assert.match(html, /class="view view-full"/);
   assert.match(html, /full file is not available/i);
@@ -177,10 +175,20 @@ test('renderEdit shows a shell diff shared with another turn, and says it is sha
   const html = renderEdit(edit);
 
   assert.match(html, /Composer\.tsx/);
-  // The code is on the page, not a pointer to somewhere else.
-  assert.match(html, /class="hunk"/);
+  // The code is shown here, not a pointer to somewhere else.
+  assert.match(html, /class="view view-hunks" data-diff="[0-9a-f]+"/);
   assert.match(html, /so did turn 4/);
   assert.doesNotMatch(html, /outside the project/);
+});
+
+test('a shell badge keeps a long command short in its tooltip', () => {
+  const html = renderEdit({
+    tool: 'Bash', rel: 'a.py', kind: 'update', result: 'ok', hunks: [], stats: { added: 0, removed: 0 },
+    attribution: 'command', command: `python3 - <<'EOF'\n${'x'.repeat(5000)}\nEOF`,
+  });
+  const title = html.match(/class="badge shell" title="([^"]*)"/)[1];
+  assert.ok(title.length < 200, `title is ${title.length} chars`); // 160 chars, some escaped
+  assert.match(title, /…$/);
 });
 
 test('renderEdit puts the edit id on its header so the Trace lens can jump to it', () => {

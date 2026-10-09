@@ -4,8 +4,8 @@
  */
 
 import { icon } from './icons.mjs';
-import { renderFullFile } from './full-view.mjs';
 import { escapeHtml, hunkTableHtml } from './hunk-html.mjs';
+import { contentKey } from './story-data.mjs';
 
 export { escapeHtml };
 
@@ -21,20 +21,20 @@ export function renderHunk(hunk) {
 
 /**
  * The two ways of showing one edit's changes: just the hunks, or the whole
- * file with those same changes spliced in. Both are rendered; the page's
- * "Full file" toggle decides which is visible.
- * @param {Array<object>} hunks
- * @param {string|null} base - the file as it stood before this edit
- * @param {boolean} [approximate] - base came from the file's current disk
- *   contents rather than the transcript, so it may include later changes
- * @param {boolean|string|{html: string}|{ref: string}} [withFull] - render
- *   the full-file view here (true); omit it entirely (false, used by the
- *   Story lens); use one built ahead by planFullViews (`{html}`, '' when
- *   none could be built); leave a slot the page script fills from the
- *   Review lens's copy of the same edit (`{ref}`, so the page carries each
- *   view once); or show a placeholder saying why there is none (`'skip'`
- *   for out-of-project edits, `'combined'` for a diff shared across turns,
+ * file with those same changes spliced in. Neither carries the code: each is
+ * an empty placeholder naming an entry in the page's story data
+ * (story-data.mjs), and the page script renders it the first time it is
+ * shown. The "Full file" toggle decides which of the two is visible.
+ * @param {string|null} diffKey - the edit's hunks in the story data, null
+ *   when it has none
+ * @param {false|string|{base: string}} [full] - the full-file pane: none at
+ *   all (false, used by the Story lens); a placeholder for the base text
+ *   under that key (`{base}`); '' when no pre-edit text is known or the file
+ *   is too large; or a note saying why there is none (`'skip'` for
+ *   out-of-project edits, `'combined'` for a diff shared across turns,
  *   `'budget'` when the page budget ran out)
+ * @param {boolean} [approximate] - the base came from the file's current
+ *   disk contents rather than the transcript, so it may include later changes
  * @returns {string}
  */
 const SKIP_REASONS = {
@@ -43,39 +43,27 @@ const SKIP_REASONS = {
   budget: 'Full file view was left out to keep the page small; newer turns get it first.',
 };
 
-export function renderViews(hunks, base, approximate = false, withFull = true) {
-  const hunksHtml = (hunks || []).map(renderHunk).join('');
-  if (withFull === false) return `<div class="view view-hunks">${hunksHtml}</div>`;
-  // Two reasons not to build a full-file view while still keeping the pane,
-  // so the hunks/full toggle behaves the same on every edit.
-  const skipped = SKIP_REASONS[withFull];
+export function renderViews(diffKey, full = '', approximate = false) {
+  const diffAttr = diffKey ? ` data-diff="${escapeHtml(diffKey)}"` : '';
+  const hunks = `<div class="view view-hunks"${diffAttr}></div>`;
+  if (full === false) return hunks;
+  // Every other case keeps the pane, so the hunks/full toggle behaves the
+  // same on every edit.
+  const skipped = SKIP_REASONS[full];
   if (skipped) {
-    return (
-      `<div class="view view-hunks">${hunksHtml}</div>` +
-      `<div class="view view-full"><p class="edit-unknown">${icon('filter')}${skipped}</p></div>`
-    );
+    return hunks + `<div class="view view-full"><p class="edit-unknown">${icon('filter')}${skipped}</p></div>`;
   }
-  if (withFull && typeof withFull === 'object' && 'ref' in withFull) {
-    return (
-      `<div class="view view-hunks">${hunksHtml}</div>` +
-      `<div class="view view-full" data-full-ref="${escapeHtml(withFull.ref)}"></div>`
-    );
+  if (full && typeof full === 'object' && full.base) {
+    const note = approximate
+      ? `<p class="approx-note">${icon('warning')}Reconstructed from the file's current contents; ` +
+        `lines changed after the session may appear.</p>`
+      : '';
+    return hunks + `<div class="view view-full"${diffAttr} data-base="${escapeHtml(full.base)}">${note}</div>`;
   }
-  const fullHtml = withFull && typeof withFull === 'object'
-    ? withFull.html
-    : renderFullFile(typeof base === 'string' ? base : null, hunks || []);
-  const full = fullHtml ||
-    `<p class="edit-unknown">${icon('warning')}The full file is not available for this edit ` +
-    `(the transcript did not record its contents).</p>`;
-
-  const note = fullHtml && approximate
-    ? `<p class="approx-note">${icon('warning')}Reconstructed from the file's current contents; ` +
-      `lines changed after the session may appear.</p>`
-    : '';
-
   return (
-    `<div class="view view-hunks">${hunksHtml}</div>` +
-    `<div class="view view-full">${note}${full}</div>`
+    hunks +
+    `<div class="view view-full"><p class="edit-unknown">${icon('warning')}The full file is not available for this edit ` +
+    `(the transcript did not record its contents).</p></div>`
   );
 }
 
@@ -85,8 +73,8 @@ export function renderViews(hunks, base, approximate = false, withFull = true) {
  * never arrived. Edits to files outside the project are marked so the
  * page's scope filter can hide them.
  * @param {object} edit
- * @param {{base?: string|null, fullView?: boolean|string|object}} [opts] - reconstructed
- *   pre-edit file text, and the full-file view mode (see renderViews)
+ * @param {{diffKey?: string|null, fullView?: false|string|object}} [opts] - the
+ *   edit's hunks in the story data, and the full-file pane (see renderViews)
  * @returns {string}
  */
 /**
@@ -125,9 +113,21 @@ function provenanceNote(edit) {
  * file - but only where the caller wanted the pane at all.
  */
 function fullViewMode(edit, opts) {
-  const wanted = 'fullView' in opts ? opts.fullView : true;
+  const wanted = 'fullView' in opts ? opts.fullView : '';
   if (wanted === false) return false;
   return edit.combined_into ? 'combined' : wanted;
+}
+
+/** The edit's key in the story data: given by the lens, or derived the same way. */
+function diffKeyOf(edit, opts) {
+  if ('diffKey' in opts) return opts.diffKey;
+  return edit.hunks && edit.hunks.length > 0 ? contentKey(edit.hunks) : null;
+}
+
+/** A tooltip, not the record: the Report lens lists the full command. */
+const TITLE_MAX = 160;
+function clampTitle(text) {
+  return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX)}…` : text;
 }
 
 export function renderEdit(edit, opts = {}) {
@@ -136,7 +136,7 @@ export function renderEdit(edit, opts = {}) {
   if (edit.kind === 'delete') badges.push(`<span class="badge delete">${icon('minus')}deleted</span>`);
   if (edit.tool === 'Bash') {
     // The command is the evidence for this edit, so keep it on the badge.
-    const title = edit.command ? ` title="${escapeHtml(edit.command)}"` : '';
+    const title = edit.command ? ` title="${escapeHtml(clampTitle(edit.command))}"` : '';
     badges.push(`<span class="badge shell"${title}>${icon('terminal')}via shell</span>`);
   }
   if (edit.by_subagent) badges.push(`<span class="badge subagent">${icon('robot')}by subagent</span>`);
@@ -172,7 +172,7 @@ export function renderEdit(edit, opts = {}) {
   return (
     `<div class="edit"${fileAttr}${outside}>${header}` +
     provenanceNote(edit) +
-    renderViews(edit.hunks, opts.base, edit.base_source === 'disk', fullViewMode(edit, opts)) +
+    renderViews(diffKeyOf(edit, opts), fullViewMode(edit, opts), edit.base_source === 'disk') +
     `</div>`
   );
 }

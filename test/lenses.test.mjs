@@ -62,7 +62,7 @@ test('renderReviewLens lists one timeline entry per turn with prompt, summary an
   assert.match(html, /<blockquote class="turn-prompt">Add a title prop<\/blockquote>/);
   assert.match(html, /<p class="turn-summary">Added title prop\.<\/p>/);
   assert.match(html, /<p class="turn-filecount">[^]*?1 file changed/);
-  assert.match(html, /class="hunk"/); // edit panel content rendered via renderEdit
+  assert.match(html, /class="view view-hunks" data-diff="[0-9a-f]+"/); // edit panel placeholder via renderEdit
 });
 
 test('renderReviewLens counts distinct files on the left instead of listing them, following the project toggle', async () => {
@@ -196,7 +196,7 @@ test('renderStoryLens renders one card per turn with prompt, summary, file count
   assert.match(html, /Added a title prop to Panel\./);
   assert.match(html, /1 file/);
   assert.match(html, /<details/);
-  assert.match(html, /class="hunk"/);
+  assert.match(html, /class="view view-hunks" data-diff="[0-9a-f]+"/);
 });
 
 test('renderHeader renders the counts as stat tiles with icons, a decorative motif, and a per-turn session strip', () => {
@@ -309,12 +309,15 @@ test('renderDiffLens marks the out-of-project file in the tree and its panel', a
   assert.match(html, /<section class="file-panel" data-file-panel="\.\.\/\.\.\/tmp\/s\.json" data-outside="1"/);
 });
 
-test('renderReviewLens passes each edit its reconstructed pre-edit text so the full-file view can render', async () => {
-  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+test('renderReviewLens points each edit at its reconstructed pre-edit text so the full-file view can render', async () => {
+  const { renderReviewLens, storyDataFor } = await import('../src/render/lenses.mjs');
+  const story = outsideStory();
 
-  const html = renderReviewLens(outsideStory());
+  const html = renderReviewLens(story);
 
-  assert.match(html, /<table class="hunk full">/); // in-project edit had a before snapshot
+  // the in-project edit had a before snapshot, carried once in the story data
+  const key = html.match(/class="view view-full" data-diff="[0-9a-f]+" data-base="([0-9a-f]+)"/)[1];
+  assert.equal(typeof storyDataFor(story).data.bases[key], 'string');
   assert.match(html, /outside the project/i); // the outside edit gets a skip note, not a splice attempt
 });
 
@@ -584,8 +587,8 @@ test("renderReviewLens repeats the turn's prompt at the top of its panel, before
   assert.ok(panel.indexOf('panel-prompt') < panel.indexOf('turn-replies'));
 });
 
-test('Review carries each full-file view once; the Diff lens refers to it instead of repeating it', async () => {
-  const { renderReviewLens, renderDiffLens } = await import('../src/render/lenses.mjs');
+test('Review and Diff point at the same full-file base, which the story data carries once', async () => {
+  const { renderReviewLens, renderDiffLens, storyDataFor } = await import('../src/render/lenses.mjs');
   const story = sampleStory({
     turns: [
       { index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [
@@ -599,9 +602,31 @@ test('Review carries each full-file view once; the Diff lens refers to it instea
   const review = renderReviewLens(story);
   const diff = renderDiffLens(story);
 
-  assert.match(review, /<div class="view view-full"><table class="hunk full">/);
-  assert.match(diff, /<div class="view view-full" data-full-ref="e1"><\/div>/);
-  assert.doesNotMatch(diff, /<table class="hunk full">/);
+  const slot = /<div class="view view-full" data-diff="[0-9a-f]+" data-base="([0-9a-f]+)"><\/div>/;
+  const key = review.match(slot)[1];
+  assert.equal(diff.match(slot)[1], key);
+  assert.doesNotMatch(review + diff, /<table/);
+  assert.deepEqual(storyDataFor(story).data.bases, { [key]: '' });
+});
+
+test('combined shell edits that repeat one git diff point at a single story-data entry', async () => {
+  const { renderReviewLens, storyDataFor } = await import('../src/render/lenses.mjs');
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }];
+  const shell = (id, turn, extra) => ({ id, tool: 'Bash', file: '/p/a.ts', rel: 'a.ts', kind: 'update', result: 'ok',
+    hunks, stats: { added: 1, removed: 1 }, attribution: 'command', ...extra });
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [shell('bash:a.ts:t1', 1, { combined_into: 2 })] },
+      { index: 2, id: 'u2', at: null, prompt: 'q', summary: '', edits: [shell('bash:a.ts', 2, {})] },
+    ],
+    files: [{ rel: 'a.ts', language: 'typescript', turns: [1, 2], churn: false, stats: { added: 1, removed: 1 } }],
+  });
+
+  const keys = [...renderReviewLens(story).matchAll(/class="view view-hunks" data-diff="([0-9a-f]+)"/g)].map((m) => m[1]);
+
+  assert.equal(keys.length, 2);
+  assert.equal(keys[0], keys[1]);
+  assert.deepEqual(Object.keys(storyDataFor(story).data.diffs), [keys[0]]);
 });
 
 test('renderDiffLens puts a name filter above the file tree', async () => {

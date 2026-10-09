@@ -11,12 +11,12 @@ import { spliceRows, fullTableHtml } from './hunk-html.mjs';
  * Bounds on the full-file view, so opting into it cannot bloat a shareable
  * artifact without limit. A file is skipped when it is too long *or* too
  * heavy (minified or data files have few lines but huge ones), before or
- * after the edit, and the page as a whole spends a fixed budget of spliced
- * content (see planFullViews).
+ * after the edit, and the page as a whole carries a fixed budget of pre-edit
+ * text for these views (see planFullBases in story-data.mjs).
  */
 export const FULL_VIEW_MAX_LINES = 2000;
 export const FULL_VIEW_MAX_CHARS = 80000;
-export const FULL_VIEW_BUDGET_CHARS = 2000000;
+export const FULL_VIEW_BUDGET_CHARS = 1000000;
 
 /**
  * @param {string|null} baseText - the file as it stood before the edit
@@ -45,37 +45,4 @@ export function renderFullFile(baseText, hunks) {
   if (!rows) return '';
 
   return fullTableHtml(rows);
-}
-
-/**
- * Decide which edits get a full-file view, building each one once. The
- * budget goes to the newest turns first, since those are the ones a reader
- * is most likely reviewing, and is charged by rendered HTML size. Review
- * carries these views; the Diff lens refers to them (see renderViews).
- *
- * Edits that never get a full view are left out of the map: files outside
- * the project, a diff shared across turns (`combined_into`), and edits that
- * failed or never finished.
- * @returns {Map<string, string|null>} edit id -> the view's HTML, '' when no
- *   pre-edit text is known or the file is too large, or null when the page
- *   budget ran out before this edit
- */
-export function planFullViews(story, bases, budget = FULL_VIEW_BUDGET_CHARS) {
-  const plan = new Map();
-  let left = budget;
-  for (const turn of [...story.turns].reverse()) {
-    for (const edit of [...turn.edits].reverse()) {
-      if (edit.outside_cwd || edit.combined_into) continue;
-      if (edit.result === 'error' || edit.result === 'unknown') continue;
-      const base = bases.get(edit.id);
-      const html = renderFullFile(typeof base === 'string' ? base : null, edit.hunks || []);
-      if (html.length > left) {
-        plan.set(edit.id, null);
-        continue;
-      }
-      left -= html.length;
-      plan.set(edit.id, html);
-    }
-  }
-  return plan;
 }

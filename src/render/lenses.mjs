@@ -1,7 +1,6 @@
 import { escapeHtml, renderEdit, renderViews } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { buildFileBases } from '../ir/file-state.mjs';
-import { planFullViews } from './full-view.mjs';
 import { buildStoryData } from './story-data.mjs';
 import { inProject, shortSha } from '../ir/selectors.mjs';
 
@@ -13,12 +12,6 @@ function basesFor(story) {
   return BASES.get(story);
 }
 
-const FULL_VIEWS = new WeakMap();
-function fullViewsFor(story) {
-  if (!FULL_VIEWS.has(story)) FULL_VIEWS.set(story, planFullViews(story, basesFor(story)));
-  return FULL_VIEWS.get(story);
-}
-
 // The code the page renders on demand, carried once (see story-data.mjs).
 const STORY_DATA = new WeakMap();
 export function storyDataFor(story) {
@@ -26,19 +19,19 @@ export function storyDataFor(story) {
   return STORY_DATA.get(story);
 }
 
-/**
- * How an edit's full-file pane is filled. Review holds the views built by
- * planFullViews; the Diff lens (`asRef`) points at Review's copy instead,
- * so the page carries each view once.
- */
-function fullViewFor(story, edit, asRef = false) {
+function diffKeyFor(story, edit) {
+  return storyDataFor(story).diffKeyOf.get(edit.id) || null;
+}
+
+/** How an edit's full-file pane is filled (see renderViews). */
+function fullViewFor(story, edit) {
   if (edit.outside_cwd) return 'skip';
   if (edit.combined_into) return 'combined';
-  const plan = fullViewsFor(story);
-  if (!plan.has(edit.id)) return { html: '' };
-  const html = plan.get(edit.id);
-  if (html === null) return 'budget';
-  return asRef && html ? { ref: edit.id } : { html };
+  const { fullOf } = storyDataFor(story);
+  if (!fullOf.has(edit.id)) return '';
+  const key = fullOf.get(edit.id);
+  if (key === null) return 'budget';
+  return key ? { base: key } : '';
 }
 
 
@@ -494,12 +487,12 @@ function renderReplies(turn) {
  * Review lens: a timeline of turns on the left (numbered node on a rail,
  * full prompt, intent, activity bar, file count), each linked by data-turn
  * to a panel of that turn's edits. Selection between turns is handled by
- * the page's inline script; every panel is rendered so the page works with
- * JS disabled too (all turns simply show stacked).
+ * the page's inline script. Every panel is in the page, but its code is a
+ * placeholder the script renders when the reader picks a file, so without
+ * JS the turns show stacked with a note in place of each diff.
  */
 export function renderReviewLens(story) {
   const max = maxTurnTotals(story.turns);
-  const bases = basesFor(story);
   const timelineItems = story.turns
     .map((turn) => {
       const summaryHtml = turn.summary
@@ -527,7 +520,7 @@ export function renderReviewLens(story) {
     .map((turn) => {
       const editsHtml = turn.edits.length > 0
         ? turn.edits.map((edit) => renderEdit(edit, {
-            base: bases.get(edit.id),
+            diffKey: diffKeyFor(story, edit),
             fullView: fullViewFor(story, edit),
           })).join('')
         : `<p class="no-edits">${icon('review')}No file edits in this turn.</p>`;
@@ -563,7 +556,6 @@ export function renderReviewLens(story) {
  * with the hunk tagged by which turn produced it (hover shows the prompt).
  */
 export function renderDiffLens(story) {
-  const bases = basesFor(story);
   const treeItems = story.files
     .map((file) => {
       const churn = file.churn ? ' churn' : '';
@@ -591,7 +583,7 @@ export function renderDiffLens(story) {
             `</div>`;
           occurrences.push(
             `<div class="occurrence">${tag}` +
-            renderViews(edit.hunks, bases.get(edit.id), edit.base_source === 'disk', fullViewFor(story, edit, true)) +
+            renderViews(diffKeyFor(story, edit), fullViewFor(story, edit), edit.base_source === 'disk') +
             `</div>`
           );
         }
@@ -631,11 +623,10 @@ export function renderDiffLens(story) {
 
 /**
  * Story lens: readable narrative cards, one per turn along a rail, code
- * collapsed behind a native <details> toggle so this works without JS too.
+ * collapsed behind a native <details> toggle and rendered when it opens.
  */
 export function renderStoryLens(story) {
   const max = maxTurnTotals(story.turns);
-  const bases = basesFor(story);
   const cards = story.turns
     .map((turn) => {
       // Only edits with a diff go behind "Show code": a failed, interrupted or
@@ -643,7 +634,7 @@ export function renderStoryLens(story) {
       // is noise. When every one of them is outside the project, the toggle
       // hides with the project filter, like the edits inside it would.
       const codeEdits = turn.edits.filter((edit) => edit.hunks && edit.hunks.length > 0);
-      const editsHtml = codeEdits.map((edit) => renderEdit(edit, { fullView: false })).join('');
+      const editsHtml = codeEdits.map((edit) => renderEdit(edit, { diffKey: diffKeyFor(story, edit), fullView: false })).join('');
       const codeOutside = codeEdits.length > 0 && codeEdits.every((edit) => edit.outside_cwd)
         ? ' data-outside="1"'
         : '';

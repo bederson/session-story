@@ -452,7 +452,8 @@ html.js #lens-trace.failures-only .trace-event:not(.trace-prompt):not([data-grou
 `;
 /**
  * Runs inside the page script's IIFE (src/render/template.mjs), which
- * provides root, showLens, turns, reduceMotion, revealEdit and filterPanelFiles.
+ * provides root, showLens, turns, reduceMotion, revealEdit, filterPanelFiles and
+ * renderPending.
  */
 export const TRACE_SCRIPT = `
   var traceLens = document.getElementById('lens-trace');
@@ -499,6 +500,8 @@ export const TRACE_SCRIPT = `
         var scope = document.querySelector('.opt-toggle[data-opt="scope"]');
         if (scope) scope.click();
       }
+      // Its code may not be rendered yet (or only in the other view mode).
+      renderPending(target);
       revealEdit(target);
     });
     setTraceFilter('all');

@@ -70,12 +70,14 @@ test('extract -> validate -> render produces a story.json and story.html matchin
   assert.match(html, /README\.md/);
   assert.match(html, /id="lens-report"/);
   assert.match(html, /Add a title prop to Panel and document the project with a README\./);
-  // hunk count in the page matches the IR: 1 Edit hunk + 1 synthesized create hunk,
-  // each rendered once per lens (review, diff, story) = 2 * 3 = 6 <table class="hunk"> occurrences
-  // (the Report lens renders no hunk tables at all)
+  // hunk count in the page matches the IR: 1 Edit hunk + 1 synthesized create hunk.
+  // Each is carried once in the story data and named by a placeholder in
+  // each code lens (review, diff, story) = 2 * 3 = 6; the Report lens has none.
   const markup = html.replace(/<script[^>]*>[^]*?<\/script>/g, '');
-  const hunkTableMatches = markup.match(/<table class="hunk">/g) || [];
-  assert.equal(hunkTableMatches.length, 6);
+  assert.equal((markup.match(/class="view view-hunks" data-diff="/g) || []).length, 6);
+  assert.doesNotMatch(markup, /<table class="hunk/);
+  const data = JSON.parse(html.match(/<script type="application\/json" id="story-data">([^]*?)<\/script>/)[1]);
+  assert.equal(Object.values(data.diffs).flat().length, 2);
 });
 
 test('extract surfaces commands, errors, plan, and git branch from a session with a failed test, a failed edit, and an approved plan', async () => {
