@@ -9,7 +9,21 @@
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { plural, OUTCOME_LABELS } from './lenses.mjs';
-import { allCommands, allErrors, validationRuns, shortSha } from '../ir/selectors.mjs';
+import { allCommands, allErrors, validationRuns, shortSha, VALIDATION_CATEGORIES } from '../ir/selectors.mjs';
+
+/**
+ * Longest command shown in full. Shell commands often carry a whole script
+ * as a heredoc; the opening is enough to say what ran, and story.json keeps
+ * the rest.
+ */
+export const COMMAND_SHOWN_MAX = 400;
+
+function commandText(command) {
+  const text = String(command || '');
+  if (text.length <= COMMAND_SHOWN_MAX) return escapeHtml(text);
+  const more = text.length - COMMAND_SHOWN_MAX;
+  return `${escapeHtml(text.slice(0, COMMAND_SHOWN_MAX))}<span class="cmd-more">… ${more} more ${plural(more, 'character')}</span>`;
+}
 
 
 function emptyReport() {
@@ -78,23 +92,32 @@ function renderDecisions(report) {
   return section('decision', 'Decisions', body);
 }
 
-function commandRow(entry, { showOutcome = false } = {}) {
+/**
+ * One command. A failed test, lint or build run's output is shown once,
+ * under Tests & validation; its row under Commands points there.
+ */
+function commandRow(entry, { showOutcome = false, outputHere = true } = {}) {
   const exit = entry.exit_code !== null && entry.exit_code !== undefined
     ? `<span class="cmd-exit">exit ${entry.exit_code}</span>`
     : '';
   const statusText = showOutcome
     ? `<span class="cmd-exit">${entry.ok === true ? 'passed' : entry.ok === false ? 'failed' : 'unknown'}</span>`
     : exit;
-  const output = entry.ok === false && entry.output_tail
+  const failedWithOutput = entry.ok === false && entry.output_tail;
+  const output = failedWithOutput && outputHere
     ? `<details class="report-test-output"><summary>output</summary><pre>${escapeHtml(entry.output_tail)}</pre></details>`
+    : '';
+  const outputElsewhere = failedWithOutput && !outputHere
+    ? `<span class="cmd-exit">output under Tests &amp; validation</span>`
     : '';
   return (
     `<div class="cmd-row">` +
     statusDot(entry.rejected ? false : entry.ok) +
     `<span class="cmd-turn">turn ${entry.turnIndex}</span>` +
     `<span class="badge cmd-category">${escapeHtml(entry.category || 'other')}</span>` +
-    `<code class="cmd-text">${escapeHtml(entry.command)}</code>` +
+    `<code class="cmd-text">${commandText(entry.command)}</code>` +
     statusText +
+    outputElsewhere +
     `</div>` +
     output
   );
@@ -104,7 +127,7 @@ function renderCommands(turns) {
   const commands = allCommands(turns);
   if (commands.length === 0) return section('terminal', 'Commands executed', noneRecorded());
   const failed = commands.filter((c) => c.ok === false).length;
-  const rows = commands.map((c) => commandRow(c)).join('');
+  const rows = commands.map((c) => commandRow(c, { outputHere: !VALIDATION_CATEGORIES.has(c.category) })).join('');
   const summary = `<p class="report-count">${commands.length} ${plural(commands.length, 'command')}, ${failed} failed</p>`;
   return section('terminal', 'Commands executed', `${summary}${rows}`);
 }

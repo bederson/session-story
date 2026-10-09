@@ -155,3 +155,32 @@ test('degrades gracefully when report is missing entirely', () => {
   const html = renderReportLens(story);
   assert.match(html, /None recorded\./);
 });
+
+test('a failed test run shows its output once, under Tests & validation, and its command row points there', () => {
+  const story = sampleStory();
+  story.turns[0].bash = [
+    { id: 'b1', command: 'npm test', description: '', category: 'test', ok: false, exit_code: 1, rejected: false, interrupted: false, output_tail: 'Expected 2 to equal 3' },
+    { id: 'b2', command: 'curl x', description: '', category: 'other', ok: false, exit_code: 7, rejected: false, interrupted: false, output_tail: 'Could not resolve host' },
+  ];
+  const html = renderReportLens(story);
+
+  assert.equal(html.split('Expected 2 to equal 3').length - 1, 1);
+  assert.ok(html.indexOf('Expected 2 to equal 3') > html.indexOf('Tests &amp; validation'));
+  assert.match(html, /output under Tests &amp; validation/);
+  // Output of a failed command that is not a validation run stays with it.
+  assert.equal(html.split('Could not resolve host').length - 1, 1);
+});
+
+test('a long command shows its opening and says how much was left out', async () => {
+  const { COMMAND_SHOWN_MAX } = await import('../src/render/report.mjs');
+  const story = sampleStory();
+  const command = `python3 - <<'EOF'\n${'x'.repeat(COMMAND_SHOWN_MAX + 500)}\nEOF`;
+  story.turns[0].bash = [
+    { id: 'b1', command, description: '', category: 'other', ok: true, exit_code: 0, rejected: false, interrupted: false, output_tail: '' },
+  ];
+  const html = renderReportLens(story);
+
+  assert.match(html, /python3 - &lt;&lt;&#39;EOF&#39;/);
+  assert.match(html, new RegExp(`… ${command.length - COMMAND_SHOWN_MAX} more characters`));
+  assert.doesNotMatch(html, /x{1000}/);
+});

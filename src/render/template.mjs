@@ -274,6 +274,7 @@ ${OUTCOME_CSS}
 .cmd-category { text-transform: capitalize; }
 .cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); color: var(--text); }
 .cmd-exit { color: var(--text-3); font-size: 11.5px; }
+.cmd-more { color: var(--text-3); font-style: italic; }
 .report-test-output { flex-basis: 100%; margin-top: 4px; }
 .report-test-output summary { cursor: pointer; color: var(--accent-ink); font-size: 12px; font-weight: 600; list-style: none; }
 .report-test-output summary::-webkit-details-marker { display: none; }
