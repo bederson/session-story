@@ -122,6 +122,15 @@ session" / "/story".
    when recorded, and which turn used the most output tokens (the Trace
    tab's "Where it went" ranks them).
 
+6. **Optional: markdown.** If the user asks for a PR description or a
+   handoff for a fresh session, run
+   ```bash
+   node bin/story.mjs export <scratch>/story.json [--template handoff]
+   ```
+   and give them the output (or pipe it to `pbcopy`). Every line comes
+   from story.json; paste it as is and add no claims of your own. Files
+   outside the project are left out unless `--all-files` is passed.
+
 ## Limits
 
 - Claude Code sessions only (v1). Codex/Cursor/OpenCode are out of scope.

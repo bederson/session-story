@@ -12,6 +12,7 @@ import { buildDependencies } from '../src/ir/dependencies.mjs';
 import { fillGitState } from '../src/ir/git-state.mjs';
 import { validateStory } from '../src/ir/validate.mjs';
 import { renderPage } from '../src/render/template.mjs';
+import { renderMarkdown, TEMPLATES } from '../src/render/markdown.mjs';
 import {
   storyFileName, libraryEntry, upsertEntry, renderSessionsJs, renderIndexPage,
   LIBRARY_DIR, MANIFEST_FILE, SESSIONS_FILE, INDEX_FILE,
@@ -327,6 +328,34 @@ async function cmdRender(opts) {
   }
 }
 
+/**
+ * Markdown for a pull request description or a handoff to a fresh session.
+ * Stdout by default so it pipes into `pbcopy` or `gh pr create --body-file -`.
+ */
+async function cmdExport(opts) {
+  const file = opts._[0];
+  if (!file) {
+    process.stderr.write(`usage: story.mjs export <story.json> [--template ${TEMPLATES.join('|')}] [-o out.md] [--all-files]\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const template = typeof opts.template === 'string' ? opts.template : 'pr';
+  if (!TEMPLATES.includes(template)) {
+    process.stderr.write(`error: --template must be one of: ${TEMPLATES.join(', ')}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const story = JSON.parse(await readFile(file, 'utf8'));
+  const markdown = renderMarkdown(story, { template, allFiles: opts['all-files'] === true });
+  if (opts.output) {
+    await mkdir(path.dirname(path.resolve(opts.output)), { recursive: true });
+    await writeFile(opts.output, markdown);
+    process.stderr.write(`Wrote ${opts.output}\n`);
+  } else {
+    process.stdout.write(markdown);
+  }
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2));
   switch (command) {
@@ -339,8 +368,11 @@ async function main() {
     case 'render':
       await cmdRender(opts);
       break;
+    case 'export':
+      await cmdExport(opts);
+      break;
     default:
-      process.stderr.write('usage: story.mjs <extract|validate|render> [options]\n');
+      process.stderr.write('usage: story.mjs <extract|validate|render|export> [options]\n');
       process.exitCode = 1;
   }
 }

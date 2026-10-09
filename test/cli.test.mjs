@@ -357,3 +357,33 @@ test('extract --latest -o <file> writes to the given file (a boolean flag must n
   const story = JSON.parse(await readFile(out, 'utf8'));
   assert.equal(story.session.id, 'sess-1');
 });
+
+test('export writes PR or handoff markdown to stdout or to -o, and rejects an unknown template', async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'story-cli-export-'));
+  const claudeDir = path.join(workdir, 'claude-projects');
+  const slugDir = path.join(claudeDir, '-proj');
+  await mkdir(slugDir, { recursive: true });
+  await cp(path.join(__dirname, 'fixtures', 'simple-session.jsonl'), path.join(slugDir, 'sess-1.jsonl'));
+  const storyJsonPath = path.join(workdir, 'story.json');
+  await run('node', [binPath, 'extract', '--claude-dir', claudeDir, '--cwd', '/proj', '--session', 'sess-1', '--no-git', '-o', storyJsonPath]);
+
+  const pr = await run('node', [binPath, 'export', storyJsonPath]);
+  assert.ok(pr.stdout.startsWith('# '));
+  assert.match(pr.stdout, /## What changed/);
+  assert.match(pr.stdout, /`src\/Panel\.tsx`/);
+  assert.doesNotMatch(pr.stdout, /## Turn by turn/);
+
+  const handoff = await run('node', [binPath, 'export', storyJsonPath, '--template', 'handoff']);
+  assert.match(handoff.stdout, /## Turn by turn/);
+
+  const out = path.join(workdir, 'out.md');
+  const written = await run('node', [binPath, 'export', storyJsonPath, '-o', out]);
+  assert.equal(written.stdout, '');
+  assert.equal(await readFile(out, 'utf8'), pr.stdout);
+
+  await assert.rejects(
+    () => run('node', [binPath, 'export', storyJsonPath, '--template', 'xml']),
+    (err) => err.code === 1 && /template must be one of: pr, handoff/.test(err.stderr),
+  );
+  await assert.rejects(() => run('node', [binPath, 'export']), (err) => err.code === 1 && /usage: story\.mjs export/.test(err.stderr));
+});

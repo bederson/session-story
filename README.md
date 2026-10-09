@@ -46,6 +46,12 @@ Claude extracts the current session, writes one-sentence summaries per turn, and
 
 Open the generated HTML file. Switch views depending on the audience — see below.
 
+Need text instead of a page? `export` turns the same story into markdown: a
+pull request description by default, or with `--template handoff` a status
+to paste into a fresh Claude Code session (where things stand, turn by
+turn, git). It prints to stdout, so it pipes straight into `pbcopy` or
+`gh pr create --body-file -`.
+
 ## Every session keeps its own page
 
 Stories land in a `.session-stories/` library in the project, one file per
@@ -115,6 +121,7 @@ Command-line equivalent of the full flow:
 node bin/story.mjs extract [--session <id>|--latest] [--cwd <dir>] [--no-chain] -o story.json
 node bin/story.mjs validate story.json [--strict]
 node bin/story.mjs render story.json [--library <dir>|-o story.html|--no-library] [--open]
+node bin/story.mjs export story.json [--template pr|handoff] [-o out.md] [--all-files]
 ```
 
 Run without any Claude-written summaries, `render` falls back to the first line of each prompt as the turn's label.
@@ -140,7 +147,7 @@ Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG
 npm test
 ```
 
-281 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
+338 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
 
 ## License
 
