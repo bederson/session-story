@@ -2,6 +2,7 @@ import { escapeHtml, renderEdit, renderViews } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { buildFileBases } from '../ir/file-state.mjs';
 import { planFullViews } from './full-view.mjs';
+import { inProject, shortSha } from '../ir/selectors.mjs';
 
 // Reconstructed pre-edit file texts, memoised per story: all three lenses
 // need them and chaining is pure string work.
@@ -32,10 +33,6 @@ function fullViewFor(story, edit, asRef = false) {
   return asRef && html ? { ref: edit.id } : { html };
 }
 
-/** Edits to files that live inside the project directory. */
-function inProject(edits) {
-  return edits.filter((edit) => !edit.outside_cwd);
-}
 
 /**
  * Every number that depends on the scope filter is rendered twice, once
@@ -107,10 +104,6 @@ function usageTiles(story) {
   );
 }
 export const OUTCOME_LABELS = { completed: 'Completed', partial: 'Partial', failed: 'Failed', blocked: 'Blocked' };
-
-function shortSha(sha) {
-  return sha ? sha.slice(0, 7) : '';
-}
 
 /** Longest title we render; Claude is asked to stay under it too. */
 const TITLE_MAX = 60;

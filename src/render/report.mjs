@@ -8,10 +8,9 @@
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { plural } from './lenses.mjs';
+import { plural, OUTCOME_LABELS } from './lenses.mjs';
+import { allCommands, allErrors, validationRuns, shortSha } from '../ir/selectors.mjs';
 
-const OUTCOME_LABELS = { completed: 'Completed', partial: 'Partial', failed: 'Failed', blocked: 'Blocked' };
-const VALIDATION_CATEGORIES = new Set(['test', 'lint', 'build']);
 
 function emptyReport() {
   return {
@@ -38,24 +37,6 @@ function statusDot(ok) {
   if (ok === true) return `<span class="cmd-status ok">${icon('check')}</span>`;
   if (ok === false) return `<span class="cmd-status fail">${icon('cross')}</span>`;
   return `<span class="cmd-status unknown">${icon('warning')}</span>`;
-}
-
-/** Every bash entry across every turn, tagged with its turn index. */
-function allCommands(turns) {
-  const out = [];
-  for (const turn of turns) {
-    for (const entry of turn.bash || []) out.push({ ...entry, turnIndex: turn.index });
-  }
-  return out;
-}
-
-/** Every recorded tool error/rejection across every turn. */
-function allErrors(turns) {
-  const out = [];
-  for (const turn of turns) {
-    for (const entry of turn.errors || []) out.push({ ...entry, turnIndex: turn.index });
-  }
-  return out;
 }
 
 function renderOutcome(report, story) {
@@ -129,7 +110,7 @@ function renderCommands(turns) {
 }
 
 function renderTests(turns) {
-  const validation = allCommands(turns).filter((c) => VALIDATION_CATEGORIES.has(c.category));
+  const validation = validationRuns(turns);
   if (validation.length === 0) return section('check', 'Tests & validation', noneRecorded());
   const last = validation[validation.length - 1];
   const lastLine = last.ok === true ? 'last run: passed' : last.ok === false ? 'last run: failed' : 'last run: unknown';
@@ -176,10 +157,6 @@ function renderDependencies(report) {
     ? `<ul class="dep-config">${deps.config_files.map((c) => `<li>${escapeHtml(c.rel)}</li>`).join('')}</ul>`
     : '';
   return section('package', 'Dependencies', `${manifestsHtml}${installsHtml}${configHtml}`);
-}
-
-function shortSha(sha) {
-  return sha ? sha.slice(0, 7) : '';
 }
 
 function renderGit(report) {

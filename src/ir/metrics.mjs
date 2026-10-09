@@ -16,10 +16,10 @@
  */
 
 import { msBetween } from './trace.mjs';
+import { VALIDATION_CATEGORIES } from './selectors.mjs';
 
 export const FINAL_STATES = ['passed', 'failed', 'none', 'unknown'];
 export const METRIC_GROUPS = ['execution', 'code', 'validation', 'reads', 'usage'];
-const VALIDATION_CATEGORIES = new Set(['test', 'lint', 'build']);
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep']);
 
 /** A command's first line, capped like an event summary, for display. */
