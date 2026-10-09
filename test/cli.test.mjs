@@ -73,7 +73,8 @@ test('extract -> validate -> render produces a story.json and story.html matchin
   // hunk count in the page matches the IR: 1 Edit hunk + 1 synthesized create hunk,
   // each rendered once per lens (review, diff, story) = 2 * 3 = 6 <table class="hunk"> occurrences
   // (the Report lens renders no hunk tables at all)
-  const hunkTableMatches = html.match(/<table class="hunk">/g) || [];
+  const markup = html.replace(/<script[^>]*>[^]*?<\/script>/g, '');
+  const hunkTableMatches = markup.match(/<table class="hunk">/g) || [];
   assert.equal(hunkTableMatches.length, 6);
 });
 

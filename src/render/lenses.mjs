@@ -2,6 +2,7 @@ import { escapeHtml, renderEdit, renderViews } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { buildFileBases } from '../ir/file-state.mjs';
 import { planFullViews } from './full-view.mjs';
+import { buildStoryData } from './story-data.mjs';
 import { inProject, shortSha } from '../ir/selectors.mjs';
 
 // Reconstructed pre-edit file texts, memoised per story: all three lenses
@@ -16,6 +17,13 @@ const FULL_VIEWS = new WeakMap();
 function fullViewsFor(story) {
   if (!FULL_VIEWS.has(story)) FULL_VIEWS.set(story, planFullViews(story, basesFor(story)));
   return FULL_VIEWS.get(story);
+}
+
+// The code the page renders on demand, carried once (see story-data.mjs).
+const STORY_DATA = new WeakMap();
+export function storyDataFor(story) {
+  if (!STORY_DATA.has(story)) STORY_DATA.set(story, buildStoryData(story, basesFor(story)));
+  return STORY_DATA.get(story);
 }
 
 /**

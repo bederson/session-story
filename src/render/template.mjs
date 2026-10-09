@@ -1,6 +1,8 @@
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
-import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle } from './lenses.mjs';
+import { renderHeader, renderReviewLens, renderDiffLens, renderStoryLens, storyTitle, storyDataFor } from './lenses.mjs';
+import { CLIENT_SOURCE } from './hunk-html.mjs';
+import { renderStoryData } from './story-data.mjs';
 import { renderReportLens } from './report.mjs';
 import { renderTraceLens, hasTrace, TRACE_CSS, TRACE_SCRIPT } from './trace-lens.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
@@ -345,7 +347,7 @@ ${TRACE_CSS}
 }
 `;
 
-const SCRIPT = THEME_TOGGLE_JS + `
+const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
 (function () {
   var root = document.documentElement;
   // The two view options: each maps to a class on <html>, so all the
@@ -616,6 +618,7 @@ export function renderPage(story, opts = {}) {
     (hasTrace(story)
       ? `<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">${renderTraceLens(story)}</section>\n`
       : '') +
+    renderStoryData(storyDataFor(story).data) + `\n` +
     `<script>${SCRIPT}</script>\n` +
     (library ? `<script>${LIBRARY_SCRIPT}</script>\n` : '') +
     `</body>\n` +
