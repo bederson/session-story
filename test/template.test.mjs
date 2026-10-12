@@ -87,6 +87,36 @@ test('renderPage scrolls a revealed edit clear of the sticky lens nav, with no f
   assert.doesNotMatch(html, /\.chip \{/);
 });
 
+test('renderPage includes sticky rails for timeline and file-nav with independent scrolling', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /\.timeline\s*\{[^}]*position:\s*sticky/);
+  assert.match(html, /\.file-nav\s*\{[^}]*position:\s*sticky/);
+});
+
+test('renderPage supports [ and ] shortcuts to cycle through lenses', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /e\.key === '\['/);
+  assert.match(html, /e\.key === '\]'/);
+});
+
+test('renderPage script wires data-jump-turn to switch to review and select turn', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /data-jump-turn/);
+  assert.match(html, /showLens\('review'\)/);
+});
+
+test('renderPage includes copy button for prompts and clipboard handler', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /class="copy-btn"/);
+  assert.match(html, /navigator\.clipboard/);
+});
+
+test('renderPage renders tab count badges on Review and Diff tabs', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /id="tab-review"[^>]*>[\s\S]*?<span class="tab-badge">1<\/span>/);
+  assert.match(html, /id="tab-diff"[^>]*>[\s\S]*?<span class="tab-badge">0<\/span>/);
+});
+
 test('renderPage stays self-contained by default: no sidecar script, no library chrome', () => {
   const html = renderPage(sampleStory());
 

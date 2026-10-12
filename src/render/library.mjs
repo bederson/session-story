@@ -153,12 +153,13 @@ body { padding-bottom: 64px; }
 .lib-empty { padding: 40px 0; color: var(--text-2); }
 .lib-empty code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); border-radius: 4px; padding: 2px 6px; }
 .no-matches { padding: 30px 0; color: var(--text-3); }
-.lib-periods { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
-.lib-period { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
-.lib-period:hover { color: var(--text); border-color: var(--border-strong); }
-.lib-period[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.lib-filters { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0 0 14px; }
+.lib-periods, .lib-outcomes { display: flex; flex-wrap: wrap; gap: 6px; }
+.lib-period, .lib-outcome-btn { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.lib-period:hover, .lib-outcome-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.lib-period[aria-pressed="true"], .lib-outcome-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
 .lib-count .roll-note { color: var(--text-3); }
-@media print { .lib-tools, .lib-periods, .theme-toggle { display: none; } }
+@media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle { display: none; } }
 `;
 
 const INDEX_SCRIPT = THEME_TOGGLE_JS + `
@@ -168,6 +169,7 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   // already rendered. The rollup line is recomputed from the shown cards.
   var input = document.querySelector('.lib-search input');
   var periodBar = document.querySelector('.lib-periods');
+  var outcomeBar = document.querySelector('.lib-outcomes');
   var cards = Array.prototype.slice.call(document.querySelectorAll('.session-card'));
   var empty = document.querySelector('.no-matches');
   var count = document.querySelector('.lib-count');
@@ -185,6 +187,11 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   var period = 'all';
   try { period = localStorage.getItem(PERIOD_KEY) || 'all'; } catch (e) {}
   if (periodBar && !periodBar.querySelector('[data-period="' + period + '"]')) period = 'all';
+
+  var OUTCOME_KEY = 'session-story-outcome';
+  var outcome = 'all';
+  try { outcome = localStorage.getItem(OUTCOME_KEY) || 'all'; } catch (e) {}
+  if (outcomeBar && !outcomeBar.querySelector('[data-outcome-filter="' + outcome + '"]')) outcome = 'all';
 
   // The [from, to) window of a period in the viewer's local time; null for all time.
   function windowOf(key) {
@@ -231,7 +238,10 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     var win = windowOf(period);
     var shown = [];
     cards.forEach(function (card) {
-      var hit = (!q || card.dataset.search.indexOf(q) !== -1) && inPeriod(card, win);
+      var o = card.dataset.outcome || 'unknown';
+      var outcomeHit = outcome === 'all' ||
+        (outcome === 'failed' ? (o === 'failed' || o === 'blocked') : o === outcome);
+      var hit = (!q || card.dataset.search.indexOf(q) !== -1) && inPeriod(card, win) && outcomeHit;
       card.hidden = !hit;
       if (hit) shown.push(card);
     });
@@ -277,6 +287,22 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     });
     press();
   }
+  if (outcomeBar) {
+    outcomeBar.hidden = false;
+    var outcomeButtons = Array.prototype.slice.call(outcomeBar.querySelectorAll('.lib-outcome-btn'));
+    function pressOutcome() {
+      outcomeButtons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.outcomeFilter === outcome)); });
+    }
+    outcomeButtons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        outcome = b.dataset.outcomeFilter;
+        try { localStorage.setItem(OUTCOME_KEY, outcome); } catch (e) {}
+        pressOutcome();
+        apply();
+      });
+    });
+    pressOutcome();
+  }
   if (input) input.addEventListener('input', apply);
   apply();
 })();
@@ -302,6 +328,20 @@ function periodFilter() {
     `<button type="button" class="lib-period" data-period="${key}" aria-pressed="${key === 'all'}">${label}</button>`
   ).join('');
   return `<div class="lib-periods" role="group" aria-label="Time period" hidden>${buttons}</div>`;
+}
+
+const OUTCOMES = [
+  ['all', 'All outcomes'],
+  ['completed', 'Completed'],
+  ['partial', 'Partial'],
+  ['failed', 'Failed / Blocked'],
+];
+
+function outcomeFilter() {
+  const buttons = OUTCOMES.map(([key, label]) =>
+    `<button type="button" class="lib-outcome-btn" data-outcome-filter="${key}" aria-pressed="${key === 'all'}">${label}</button>`
+  ).join('');
+  return `<div class="lib-outcomes" role="group" aria-label="Outcome filter" hidden>${buttons}</div>`;
 }
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -331,7 +371,8 @@ function sessionCard(entry) {
 
   return (
     `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}"` +
-    ` data-active="${escapeHtml(lastActive(entry))}" data-turns="${totals.turns || 0}"` +
+    ` data-active="${escapeHtml(lastActive(entry))}" data-outcome="${escapeHtml(entry.outcome || 'unknown')}"` +
+    ` data-turns="${totals.turns || 0}"` +
     ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
     ` data-cost="${dataNum(usage.cost_usd)}">` +
@@ -393,7 +434,7 @@ export function renderIndexPage(entries, { cwd = '' } = {}) {
     `</p>`;
 
   const body = entries.length
-    ? periodFilter() +
+    ? `<div class="lib-filters">${periodFilter()}${outcomeFilter()}</div>` +
       count +
       `<div class="session-list">${entries.map(sessionCard).join('')}</div>` +
       `<p class="no-matches" hidden>No sessions match these filters.</p>`

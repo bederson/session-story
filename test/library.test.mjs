@@ -219,3 +219,13 @@ test('renderIndexPage offers time period filters, hidden until the script runs, 
 test('renderIndexPage renders no period filter for an empty library', () => {
   assert.doesNotMatch(renderIndexPage([], { cwd: '/proj' }), /lib-periods" role/);
 });
+
+test('renderIndexPage offers outcome filters and stamps data-outcome on cards', () => {
+  const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })], { cwd: '/proj' });
+  assert.match(html, /class="lib-outcomes" role="group" aria-label="Outcome filter" hidden/);
+  for (const key of ['all', 'completed', 'partial', 'failed']) {
+    assert.match(html, new RegExp(`data-outcome-filter="${key}"`));
+  }
+  assert.match(html, /data-outcome="completed"/);
+});
+

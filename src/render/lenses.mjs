@@ -535,7 +535,9 @@ export function renderReviewLens(story) {
         inert(
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
         turnUsage(story, turn, { bar: false }) +
-        `<div class="panel-prompt-wrap"><blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
+        `<div class="panel-prompt-wrap">` +
+        `<div class="panel-prompt-head"><span class="panel-prompt-label">Prompt</span><button type="button" class="copy-btn" data-copy-target=".panel-prompt" aria-label="Copy prompt text">Copy</button></div>` +
+        `<blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
         renderReplies(turn) +
         renderFileFilter(turn.edits) +
         filteredNote +
@@ -580,9 +582,9 @@ export function renderDiffLens(story) {
         for (const edit of turn.edits) {
           if (edit.rel !== file.rel) continue;
           const tag =
-            `<div class="turn-tag" title="${escapeHtml(excerpt(turn.prompt, 200))}">` +
-            `${icon('turns')}Turn ${turn.index}` +
-            `</div>`;
+            `<button type="button" class="turn-tag" data-jump-turn="${turn.index}" title="${escapeHtml(excerpt(turn.prompt, 200))} — Click to jump to Turn ${turn.index} in Review">` +
+            `${icon('turns')}Turn ${turn.index}<span class="jump-arrow">↗</span>` +
+            `</button>`;
           occurrences.push(
             `<div class="occurrence">${tag}` +
             renderViews(diffKeyFor(story, edit), fullViewFor(story, edit), edit.base_source === 'disk') +

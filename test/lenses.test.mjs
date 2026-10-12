@@ -178,8 +178,11 @@ test('renderDiffLens lists a file tree entry and a panel per file, with each hun
   assert.match(html, /data-file-panel="src\/Panel\.tsx"><template data-inert><div class="panel-head">/);
   const turnTagMatches = html.match(/class="turn-tag"/g) || [];
   assert.equal(turnTagMatches.length, 2);
-  assert.match(html, /title="Add a title prop"/);
-  assert.match(html, /title="Also add a subtitle"/);
+  assert.match(html, /title="Add a title prop/);
+  assert.match(html, /title="Also add a subtitle/);
+  assert.match(html, /data-jump-turn="1"/);
+  assert.match(html, /data-jump-turn="2"/);
+  assert.match(html, /class="jump-arrow">↗<\/span>/);
 });
 
 test('renderStoryLens renders one card per turn with prompt, summary, file count, and collapsed code', async () => {
