@@ -179,6 +179,13 @@ test('renderEdit shows a shell diff shared with another turn, and says it is sha
   assert.match(html, /class="view view-hunks" data-diff="[0-9a-f]+"/);
   assert.match(html, /so did turn 4/);
   assert.doesNotMatch(html, /outside the project/);
+  // With no plan given, the full pane only points at the owning turn.
+  assert.match(html, /counted under/);
+
+  // A lens that planned a base for the share gets the full file here too.
+  const planned = renderEdit(edit, { fullView: { base: 'abc' } });
+  assert.match(planned, /class="view view-full" data-diff="[0-9a-f]+" data-base="abc"/);
+  assert.doesNotMatch(planned, /counted under/);
 });
 
 test('a shell badge keeps a long command short in its tooltip', () => {

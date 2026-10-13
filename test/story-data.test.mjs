@@ -60,17 +60,37 @@ test('planFullBases charges a repeated base text once', () => {
 test('planFullBases leaves out edits that never get a full view, and records "unavailable" as an empty string', () => {
   const s = story([[
     edit('outside', { outside_cwd: true }),
-    edit('shared', { combined_into: 2 }),
     edit('failed', { result: 'error' }),
     edit('nobase'),
     edit('huge'),
   ]]);
   const { plan } = planFullBases(s, new Map([['huge', 'x\n'.repeat(5000)]]));
   assert.equal(plan.has('outside'), false);
-  assert.equal(plan.has('shared'), false);
   assert.equal(plan.has('failed'), false);
   assert.equal(plan.get('nobase'), '');
   assert.equal(plan.get('huge'), '', 'over the line cap');
+});
+
+test('a shell edit shared with a later turn borrows that turn\'s base, so Full file works on both', () => {
+  const base = 'a\n';
+  const s = story([
+    [edit('bash:a.txt:t1', { rel: 'a.txt', tool: 'Bash', combined_into: 2 })],
+    [edit('bash:a.txt', { rel: 'a.txt', tool: 'Bash' })],
+  ]);
+  const { plan, texts } = planFullBases(s, new Map([['bash:a.txt', base]]));
+  assert.equal(plan.get('bash:a.txt'), contentKey(base));
+  assert.equal(plan.get('bash:a.txt:t1'), contentKey(base));
+  assert.equal(Object.keys(texts).length, 1, 'the base is carried once');
+});
+
+test('a shared shell edit follows its owner when the owner has no full view either', () => {
+  const s = story([
+    [edit('bash:a.txt:t1', { rel: 'a.txt', tool: 'Bash', combined_into: 2 }), edit('bash:b.txt:t1', { rel: 'b.txt', tool: 'Bash', combined_into: 3 })],
+    [edit('bash:a.txt', { rel: 'a.txt', tool: 'Bash' })],
+  ]);
+  const { plan } = planFullBases(s, new Map());
+  assert.equal(plan.get('bash:a.txt:t1'), '', 'owner has no base');
+  assert.equal(plan.has('bash:b.txt:t1'), false, 'no owner in the story');
 });
 
 test('inertJson cannot close or derail the script element, and parses back unchanged', () => {

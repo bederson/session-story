@@ -27,9 +27,10 @@ function diffKeyFor(story, edit) {
 /** How an edit's full-file pane is filled (see renderViews). */
 function fullViewFor(story, edit) {
   if (edit.outside_cwd) return 'skip';
-  if (edit.combined_into) return 'combined';
   const { fullOf } = storyDataFor(story);
-  if (!fullOf.has(edit.id)) return '';
+  // A shared shell edit is planned with its owner's base; only one whose
+  // owner is missing has nowhere to point but that turn.
+  if (!fullOf.has(edit.id)) return edit.combined_into ? 'combined' : '';
   const key = fullOf.get(edit.id);
   if (key === null) return 'budget';
   return key ? { base: key } : '';

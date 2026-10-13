@@ -26,9 +26,14 @@ export function contentKey(value) {
  * carries (once per distinct text). The size caps in spliceFullFile still
  * decide whether a file is small enough to show whole.
  *
+ * A shell edit shared across turns (`combined_into`) carries no text of its
+ * own, but it shows the same hunks as the turn it is shared with, so it
+ * borrows that turn's entry: the base is already on the page, and one more
+ * attribute costs nothing.
+ *
  * Edits that never get a full view are left out of the map: files outside
- * the project, a diff shared across turns (`combined_into`), and edits that
- * failed or never finished.
+ * the project, edits that failed or never finished, and a shared edit whose
+ * owner is not in the story.
  * @returns {{plan: Map<string, string|null>, texts: Object<string, string>}}
  *   plan: edit id -> the base's content key, '' when no pre-edit text is
  *   known or the file is too large, or null when the budget ran out first
@@ -37,10 +42,12 @@ export function planFullBases(story, bases, budget = FULL_VIEW_BUDGET_CHARS) {
   const plan = new Map();
   const texts = {};
   let left = budget;
+  const shared = [];
   for (const turn of [...story.turns].reverse()) {
     for (const edit of [...turn.edits].reverse()) {
-      if (edit.outside_cwd || edit.combined_into) continue;
+      if (edit.outside_cwd) continue;
       if (edit.result === 'error' || edit.result === 'unknown') continue;
+      if (edit.combined_into) { shared.push(edit); continue; }
       const base = bases.get(edit.id);
       if (typeof base !== 'string' || !spliceFullFile(base, edit.hunks || [])) {
         plan.set(edit.id, '');
@@ -58,7 +65,18 @@ export function planFullBases(story, bases, budget = FULL_VIEW_BUDGET_CHARS) {
       plan.set(edit.id, key);
     }
   }
+  for (const edit of shared) {
+    const owner = sharedOwner(story, edit);
+    if (owner && plan.has(owner.id)) plan.set(edit.id, plan.get(owner.id));
+  }
   return { plan, texts };
+}
+
+/** The edit whose git diff a `combined_into` edit repeats: same file, on the named turn. */
+function sharedOwner(story, edit) {
+  const turn = story.turns.find((t) => t.index === edit.combined_into);
+  if (!turn) return null;
+  return turn.edits.find((e) => e.rel === edit.rel && !e.combined_into) || null;
 }
 
 /**

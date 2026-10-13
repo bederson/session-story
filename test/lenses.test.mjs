@@ -633,6 +633,43 @@ test('combined shell edits that repeat one git diff point at a single story-data
   assert.deepEqual(Object.keys(storyDataFor(story).data.diffs), [keys[0]]);
 });
 
+test('a combined shell edit shows the full file from the turn it is shared with', async () => {
+  const { renderReviewLens, storyDataFor } = await import('../src/render/lenses.mjs');
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }];
+  const shell = (id, extra) => ({ id, tool: 'Bash', file: '/p/a.ts', rel: 'a.ts', kind: 'update', result: 'ok',
+    hunks, stats: { added: 1, removed: 1 }, attribution: 'command', before: null, after: null, ...extra });
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [shell('bash:a.ts:t1', { combined_into: 2 })] },
+      { index: 2, id: 'u2', at: null, prompt: 'q', summary: '', edits: [shell('bash:a.ts', { before: 'a\n', after: 'b\n' })] },
+    ],
+    files: [{ rel: 'a.ts', language: 'typescript', turns: [1, 2], churn: false, stats: { added: 1, removed: 1 } }],
+  });
+
+  const html = renderReviewLens(story);
+  const fulls = [...html.matchAll(/class="view view-full"([^>]*)>/g)].map((m) => m[1]);
+  const [key] = Object.keys(storyDataFor(story).data.bases);
+
+  assert.equal(fulls.length, 2);
+  assert.ok(fulls.every((attrs) => attrs.includes(`data-base="${key}"`)), fulls.join(' | '));
+  assert.doesNotMatch(html, /counted under/);
+});
+
+test('a combined shell edit still says where the diff is counted when no turn has the file', async () => {
+  const { renderReviewLens } = await import('../src/render/lenses.mjs');
+  const hunks = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }];
+  const shell = (id, extra) => ({ id, tool: 'Bash', file: '/p/a.ts', rel: 'a.ts', kind: 'update', result: 'ok',
+    hunks, stats: { added: 1, removed: 1 }, attribution: 'command', before: null, after: null, ...extra });
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p', summary: '', edits: [shell('bash:a.ts:t1', { combined_into: 3 })] },
+    ],
+    files: [{ rel: 'a.ts', language: 'typescript', turns: [1], churn: false, stats: { added: 1, removed: 1 } }],
+  });
+
+  assert.match(renderReviewLens(story), /counted under/);
+});
+
 test('renderDiffLens puts a name filter above the file tree', async () => {
   const { renderDiffLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({

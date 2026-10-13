@@ -108,14 +108,14 @@ function provenanceNote(edit) {
 }
 
 /**
- * Whether to build a full-file view for this edit. A shared diff has no
- * before/after of its own, so it gets the pane with a reason rather than a
- * file - but only where the caller wanted the pane at all.
+ * Whether to build a full-file view for this edit. The caller's choice wins:
+ * a lens plans a shared shell diff with the base of the turn it is shared
+ * with. Without one, a shared diff has no before/after of its own, so it
+ * gets the pane with a reason rather than a file.
  */
 function fullViewMode(edit, opts) {
-  const wanted = 'fullView' in opts ? opts.fullView : '';
-  if (wanted === false) return false;
-  return edit.combined_into ? 'combined' : wanted;
+  if ('fullView' in opts) return opts.fullView;
+  return edit.combined_into ? 'combined' : '';
 }
 
 /** The edit's key in the story data: given by the lens, or derived the same way. */

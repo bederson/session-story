@@ -391,6 +391,8 @@ function buildEdit({ rel, kind, cwd, git, readText, claim, base = 'HEAD' }) {
  *
  * The full-file text is left off: the diff is the shared part, and three
  * copies of a file's before/after in the IR buy nothing the hunks don't.
+ * The page's full-file view borrows the owning turn's pre-edit text instead
+ * (planFullBases in render/story-data.mjs).
  */
 function combinedEdit(owner, { turn, into, cwd, rel }) {
   return {
