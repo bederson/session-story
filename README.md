@@ -93,6 +93,8 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 The Trace tab appears for stories extracted by this version; an older `story.json` renders without it.
 
+The session library offers sorting, a compact layout, a "Not recorded" outcome filter and Clear filters.
+
 Two toggles in the nav apply across the views, and persist across visits:
 
 - **Project files only** (on by default) — hides edits to files outside the session's project directory (scratch files, temp drafts). Every count in the header, timeline, and file tree switches with it; turn off to see what's hidden and why.

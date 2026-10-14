@@ -158,6 +158,14 @@ body { padding-bottom: 64px; }
 .lib-period, .lib-outcome-btn { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
 .lib-period:hover, .lib-outcome-btn:hover { color: var(--text); border-color: var(--border-strong); }
 .lib-period[aria-pressed="true"], .lib-outcome-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.lib-view { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; font-size: 12.5px; color: var(--text-2); }
+.lib-view select, .lib-clear, .lib-mode { font: inherit; padding: 4px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+.lib-mode[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.session-list.compact { grid-template-columns: 1fr; gap: 6px; }
+.session-list.compact .session-card { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 14px; }
+.session-list.compact .card-summary { display: none; }
+.session-list.compact h2 { flex: 1 1 260px; margin: 0; font-size: 14px; }
+html:not(.js) .lib-view { display: none; }
 .lib-count .roll-note { color: var(--text-3); }
 @media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle { display: none; } }
 `;
@@ -174,6 +182,35 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   var empty = document.querySelector('.no-matches');
   var count = document.querySelector('.lib-count');
   if (!cards.length) return;
+  var list = document.querySelector('.session-list');
+  var sortSel = document.querySelector('.lib-sort');
+  var clearBtn = document.querySelector('.lib-clear');
+  var modeBtns = Array.prototype.slice.call(document.querySelectorAll('.lib-mode'));
+  var SORT_KEY = 'session-story-sort', MODE_KEY = 'session-story-mode';
+  var sort = 'active', mode = 'cards';
+  try { sort = localStorage.getItem(SORT_KEY) || 'active'; mode = localStorage.getItem(MODE_KEY) || 'cards'; } catch (e) {}
+  if (!sortSel || !sortSel.querySelector('[value="' + sort + '"]')) sort = 'active';
+  if (mode !== 'compact') mode = 'cards';
+  var original = cards.slice();
+  // Missing numeric values always sort last; ties keep the newest-first manifest order.
+  function sortCards() {
+    var by = { active: null, title: 'title', duration: 'duration', cost: 'cost', changed: 'changed' }[sort];
+    var ordered = original.slice();
+    if (by) ordered.sort(function (a, b) {
+      if (by === 'title') return a.dataset.title < b.dataset.title ? -1 : a.dataset.title > b.dataset.title ? 1 : original.indexOf(a) - original.indexOf(b);
+      var x = a.dataset[by] === '' ? null : Number(a.dataset[by]);
+      var y = b.dataset[by] === '' ? null : Number(b.dataset[by]);
+      if (x === null && y === null) return original.indexOf(a) - original.indexOf(b);
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return (y - x) || (original.indexOf(a) - original.indexOf(b));
+    });
+    ordered.forEach(function (c) { list.appendChild(c); });
+  }
+  function setMode() {
+    if (list) list.classList.toggle('compact', mode === 'compact');
+    modeBtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
+  }
 
   // Cards are rendered in UTC; show each last-active time in the viewer's own zone.
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -246,6 +283,7 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
       if (hit) shown.push(card);
     });
     if (empty) empty.hidden = shown.length > 0;
+    if (clearBtn) clearBtn.hidden = !(q || period !== 'all' || outcome !== 'all');
     if (!count) return;
     var sum = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
     var known = { input: 0, output: 0, cost: 0 };
@@ -304,6 +342,34 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     pressOutcome();
   }
   if (input) input.addEventListener('input', apply);
+  if (sortSel) {
+    sortSel.value = sort;
+    sortSel.addEventListener('change', function () {
+      sort = sortSel.value;
+      try { localStorage.setItem(SORT_KEY, sort); } catch (e) {}
+      sortCards();
+    });
+  }
+  modeBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      mode = b.dataset.mode;
+      try { localStorage.setItem(MODE_KEY, mode); } catch (e) {}
+      setMode();
+    });
+  });
+  // Clearing resets what narrows the list, not how it is sorted or shown.
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    if (input) input.value = '';
+    period = 'all'; outcome = 'all';
+    try { localStorage.setItem(PERIOD_KEY, period); localStorage.setItem(OUTCOME_KEY, outcome); } catch (e) {}
+    if (periodBar) Array.prototype.forEach.call(periodBar.querySelectorAll('.lib-period'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.period === 'all')); });
+    if (outcomeBar) Array.prototype.forEach.call(outcomeBar.querySelectorAll('.lib-outcome-btn'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.outcomeFilter === 'all')); });
+    apply();
+  });
+  var viewBar = document.querySelector('.lib-view');
+  if (viewBar) viewBar.hidden = false;
+  sortCards();
+  setMode();
   apply();
 })();
 `;
@@ -335,6 +401,7 @@ const OUTCOMES = [
   ['completed', 'Completed'],
   ['partial', 'Partial'],
   ['failed', 'Failed / Blocked'],
+  ['unknown', 'Not recorded'],
 ];
 
 function outcomeFilter() {
@@ -366,13 +433,14 @@ function sessionCard(entry) {
     usage.output_tokens !== null ? `${formatTokens(usage.output_tokens)} out` : '',
   ].filter(Boolean).join(' · ');
   const chain = (entry.chain || []).length;
-  const search = [entry.title, entry.summary, entry.started_at, entry.outcome]
+  const search = [entry.title, entry.summary, entry.id, entry.started_at, entry.outcome]
     .filter(Boolean).join(' ').toLowerCase();
 
   return (
     `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}"` +
     ` data-active="${escapeHtml(lastActive(entry))}" data-outcome="${escapeHtml(entry.outcome || 'unknown')}"` +
-    ` data-turns="${totals.turns || 0}"` +
+    ` data-turns="${totals.turns || 0}" data-title="${escapeHtml(String(entry.title || '').toLowerCase())}"` +
+    ` data-duration="${dataNum(entry.duration_ms || null)}" data-changed="${(totals.added || 0) + (totals.removed || 0)}"` +
     ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
     ` data-cost="${dataNum(usage.cost_usd)}">` +
@@ -435,9 +503,17 @@ export function renderIndexPage(entries, { cwd = '' } = {}) {
 
   const body = entries.length
     ? `<div class="lib-filters">${periodFilter()}${outcomeFilter()}</div>` +
+      `<div class="lib-view" hidden>` +
+      `<label>Sort <select class="lib-sort">` +
+      `<option value="active">Last active</option><option value="title">Title A–Z</option>` +
+      `<option value="duration">Longest duration</option><option value="cost">Highest cost</option>` +
+      `<option value="changed">Most changed lines</option></select></label>` +
+      `<span role="group" aria-label="Layout"><button type="button" class="lib-mode" data-mode="cards" aria-pressed="true">Cards</button> ` +
+      `<button type="button" class="lib-mode" data-mode="compact" aria-pressed="false">Compact</button></span>` +
+      `<button type="button" class="lib-clear" hidden>Clear filters</button></div>` +
       count +
       `<div class="session-list">${entries.map(sessionCard).join('')}</div>` +
-      `<p class="no-matches" hidden>No sessions match these filters.</p>`
+      `<p class="no-matches" hidden>No sessions match these filters. Use Clear filters to see all.</p>`
     : `<p class="lib-empty">No sessions yet. Run <code>story render</code> and this page will list it.</p>`;
 
   return (

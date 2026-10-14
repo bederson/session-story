@@ -229,3 +229,12 @@ test('renderIndexPage offers outcome filters and stamps data-outcome on cards', 
   assert.match(html, /data-outcome="completed"/);
 });
 
+
+test('index: sort, layout and clear controls, Not recorded filter, id searchable', () => {
+  const html = renderIndexPage([libraryEntry(sampleStory(), { file: 'a.html' })]);
+  assert.match(html, /class="lib-sort"/);
+  assert.match(html, /data-mode="compact"/);
+  assert.match(html, /class="lib-clear" hidden/);
+  assert.match(html, /data-outcome-filter="unknown"[^>]*>Not recorded/);
+  assert.match(html, /data-title="/);
+});
