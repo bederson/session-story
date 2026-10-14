@@ -333,7 +333,7 @@ export function renderHeader(story, opts = {}) {
     commitRange +
     (opts.generatedAt
       ? `<span class="generated" title="When this page was generated">${icon('sparkle')}<span>Generated ` +
-        `<time datetime="${escapeHtml(opts.generatedAt)}">${formatDate(opts.generatedAt)}</time></span></span>`
+        `<time class="local-time" datetime="${escapeHtml(opts.generatedAt)}">${formatDate(opts.generatedAt)}</time></span></span>`
       : '') +
     `</div>` +
     (session.summary ? `<p class="summary">${escapeHtml(session.summary)}</p>` : '') +

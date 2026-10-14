@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { writeFile, readFile, mkdir, rename } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { exec } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { parseTranscript } from '../src/transcript/parse.mjs';
 import { locateSession, locateSubagents, locateChain, defaultClaudeDir, subagentMetaPath } from '../src/transcript/locate.mjs';
 import { buildStory, refreshDerived } from '../src/transcript/claude-code.mjs';
@@ -14,7 +15,7 @@ import { validateStory } from '../src/ir/validate.mjs';
 import { renderPage } from '../src/render/template.mjs';
 import { renderMarkdown, TEMPLATES } from '../src/render/markdown.mjs';
 import {
-  storyFileName, libraryEntry, upsertEntry, renderSessionsJs, renderIndexPage,
+  storyFileName, libraryEntry, upsertEntry, renderSessionsJs, renderIndexPage, selectEntries, shellQuote,
   LIBRARY_DIR, MANIFEST_FILE, SESSIONS_FILE, INDEX_FILE,
 } from '../src/render/library.mjs';
 
@@ -291,14 +292,22 @@ async function writeLibrary(story, dir) {
   await writeFile(outPath, html);
 
   const entries = upsertEntry(await readManifest(dir), libraryEntry(story, { file, generatedAt }));
-  await writeFile(
-    path.join(dir, MANIFEST_FILE),
-    JSON.stringify({ version: 1, cwd: story.session.cwd || '', entries }, null, 2)
-  );
-  await writeFile(path.join(dir, SESSIONS_FILE), renderSessionsJs(entries));
-  await writeFile(path.join(dir, INDEX_FILE), renderIndexPage(entries, { cwd: story.session.cwd }));
+  await writeLibraryIndex(dir, entries, story.session.cwd || '');
 
   return { outPath, indexPath: path.join(dir, INDEX_FILE), count: entries.length };
+}
+
+/**
+ * The manifest and the two files regenerated from it. The index page gets
+ * the command that deletes from this library, spelled with absolute paths
+ * so it can be pasted into a terminal from anywhere.
+ */
+async function writeLibraryIndex(dir, entries, cwd) {
+  const cli = fileURLToPath(import.meta.url);
+  const deleteCommand = `node ${shellQuote(cli)} delete --library ${shellQuote(dir)}`;
+  await writeFile(path.join(dir, MANIFEST_FILE), JSON.stringify({ version: 1, cwd, entries }, null, 2));
+  await writeFile(path.join(dir, SESSIONS_FILE), renderSessionsJs(entries));
+  await writeFile(path.join(dir, INDEX_FILE), renderIndexPage(entries, { cwd, deleteCommand }));
 }
 
 async function cmdRender(opts) {
@@ -329,6 +338,57 @@ async function cmdRender(opts) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     exec(`${opener} "${path.resolve(outPath)}"`);
   }
+}
+
+/**
+ * Remove sessions from a library: each one's page and its manifest entry,
+ * then rewrite the index and switcher without them. Every id must name
+ * exactly one session or nothing is removed.
+ */
+async function cmdDelete(opts) {
+  const keys = opts._;
+  if (!opts.all && !keys.length) {
+    process.stderr.write('usage: story.mjs delete <session-id|id-prefix|file>... [--library <dir>]\n       story.mjs delete --all [--library <dir>]\n');
+    process.exitCode = 1;
+    return;
+  }
+  const dir = path.resolve(typeof opts.library === 'string' ? opts.library : LIBRARY_DIR);
+  const manifestPath = path.join(dir, MANIFEST_FILE);
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    if (!Array.isArray(manifest.entries)) throw new Error('no entries array');
+  } catch (err) {
+    process.stderr.write(err.code === 'ENOENT'
+      ? `error: no session library at ${dir} (pass --library <dir>)\n`
+      : `error: ${manifestPath} is unreadable (${err.message})\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const { removed, kept, unknown, ambiguous } = opts.all
+    ? { removed: manifest.entries, kept: [], unknown: [], ambiguous: [] }
+    : selectEntries(manifest.entries, keys);
+  if (unknown.length || ambiguous.length) {
+    for (const key of unknown) process.stderr.write(`error: no session matches ${key}\n`);
+    for (const key of ambiguous) process.stderr.write(`error: ${key} matches more than one session; use more of its id\n`);
+    process.stderr.write('Nothing was deleted.\n');
+    process.exitCode = 1;
+    return;
+  }
+
+  for (const entry of removed) {
+    // basename: the manifest is a file on disk, so never let it point outside the library
+    await unlink(path.join(dir, path.basename(entry.file))).catch((err) => {
+      if (err.code !== 'ENOENT') throw err;
+    });
+  }
+  await writeLibraryIndex(dir, kept, manifest.cwd || '');
+  process.stderr.write(
+    `Deleted ${removed.length} ${removed.length === 1 ? 'session' : 'sessions'}` +
+    (removed.length ? `: ${removed.map((e) => e.title || e.id).join(', ')}` : '') +
+    `\nIndex: ${path.join(dir, INDEX_FILE)} (${kept.length} ${kept.length === 1 ? 'session' : 'sessions'})\n`
+  );
 }
 
 /**
@@ -374,8 +434,11 @@ async function main() {
     case 'export':
       await cmdExport(opts);
       break;
+    case 'delete':
+      await cmdDelete(opts);
+      break;
     default:
-      process.stderr.write('usage: story.mjs <extract|validate|render|export> [options]\n');
+      process.stderr.write('usage: story.mjs <extract|validate|render|export|delete> [options]\n');
       process.exitCode = 1;
   }
 }

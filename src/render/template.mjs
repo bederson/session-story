@@ -120,6 +120,7 @@ html.full-context #lens-review .view-hunks, html.full-context #lens-diff .view-h
 
 /* ---- lens sections & panels -------------------------------------------- */
 .lens-section { max-width: 1240px; margin: 0 auto; padding: 28px var(--gutter) 56px; }
+.lens-intro { margin: -8px 0 18px; color: var(--text-2); font-size: 13.5px; }
 html.js .lens-section:not(.active) { display: none; }
 html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border); }
 .panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
@@ -370,6 +371,24 @@ ${METRICS_CSS}
 `;
 
 const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
+(function () {
+  // Times are rendered in UTC; .local-time ones are shown in the viewer's
+  // own time zone instead, keeping the UTC value as the tooltip.
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  Array.prototype.forEach.call(document.querySelectorAll('time.local-time'), function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d.getTime())) return;
+    var zone = '';
+    try {
+      var part = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(d)
+        .filter(function (p) { return p.type === 'timeZoneName'; })[0];
+      if (part) zone = ' ' + part.value;
+    } catch (e) {}
+    el.title = el.textContent;
+    el.textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes()) + zone;
+  });
+})();
 (function () {
   var root = document.documentElement;
   // The two view options: each maps to a class on <html>, so all the
@@ -663,10 +682,22 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
 })();
 `;
 
+// One line under the tabs saying, in plain words, what each view is for.
+const LENS_INTROS = {
+  review: 'Each prompt you gave, next to the code changes it led to.',
+  diff: 'Every file that changed, shown as a before-and-after diff.',
+  story: 'A plain-language account of what happened in the session, step by step.',
+  report: 'Checks, errors and how they were fixed, commands that ran, and what the session cost.',
+};
+
+function lensIntro(name) {
+  return `<p class="lens-intro">${escapeHtml(LENS_INTROS[name])}</p>`;
+}
+
 function lensTab(name, label, badge = null) {
   const badgeHtml = badge != null ? `<span class="tab-badge">${badge}</span>` : '';
   return (
-    `<button class="lens-tab" role="tab" data-lens="${name}" id="tab-${name}" aria-controls="lens-${name}" aria-selected="false">` +
+    `<button class="lens-tab" role="tab" data-lens="${name}" id="tab-${name}" aria-controls="lens-${name}" aria-selected="false" title="${escapeHtml(LENS_INTROS[name])}">` +
     `${icon(name)}<span>${label}</span>${badgeHtml}</button>`
   );
 }
@@ -765,10 +796,10 @@ export function renderPage(story, opts = {}) {
     themeToggleButton() +
     `</nav>\n` +
     `<noscript><p class="no-js-note">This page needs JavaScript to show its views.</p></noscript>\n` +
-    `<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review">${inert(renderReviewLens(story))}</section>\n` +
-    `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${inert(renderDiffLens(story))}</section>\n` +
-    `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${inert(renderStoryLens(story))}</section>\n` +
-    `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${inert(renderReportLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review">${lensIntro('review')}${inert(renderReviewLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${lensIntro('diff')}${inert(renderDiffLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${lensIntro('story')}${inert(renderStoryLens(story))}</section>\n` +
+    `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${lensIntro('report')}${inert(renderReportLens(story))}</section>\n` +
     renderStoryData(storyDataFor(story).data) + `\n` +
     `<script>${SCRIPT}</script>\n` +
     (library ? `<script>${LIBRARY_SCRIPT}</script>\n` : '') +

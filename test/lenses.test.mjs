@@ -21,7 +21,7 @@ function sampleStory(overrides = {}) {
 
 test('renderHeader says when the page was generated, as a machine-readable time', () => {
   const html = renderHeader(sampleStory(), { generatedAt: '2026-10-14T09:12:33.000Z' });
-  assert.match(html, /class="generated"[^>]*>.*Generated <time datetime="2026-10-14T09:12:33.000Z">2026-10-14 09:12 UTC<\/time>/);
+  assert.match(html, /class="generated"[^>]*>.*Generated <time class="local-time" datetime="2026-10-14T09:12:33.000Z">2026-10-14 09:12 UTC<\/time>/);
 });
 
 test('renderHeader leaves the generation stamp out when none is given', () => {

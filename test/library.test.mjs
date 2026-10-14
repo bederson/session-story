@@ -6,6 +6,8 @@ import {
   upsertEntry,
   renderSessionsJs,
   renderIndexPage,
+  selectEntries,
+  shellQuote,
 } from '../src/render/library.mjs';
 
 function sampleStory(overrides = {}) {
@@ -237,4 +239,46 @@ test('index: sort, layout and clear controls, Not recorded filter, id searchable
   assert.match(html, /class="lib-clear" hidden/);
   assert.match(html, /data-outcome-filter="unknown"[^>]*>Not recorded/);
   assert.match(html, /data-title="/);
+});
+
+test('selectEntries matches a full id, an id prefix, or a file name', () => {
+  const entries = [
+    { id: 'aaaaaaaa-0000', file: 'a.html' },
+    { id: 'bbbbbbbb-1111', file: 'b.html' },
+    { id: 'cccccccc-2222', file: 'c.html' },
+  ];
+  const { removed, kept, unknown, ambiguous } = selectEntries(entries, ['aaaaaaaa-0000', 'bbbb', 'c.html']);
+  assert.deepEqual(removed.map((e) => e.id), ['aaaaaaaa-0000', 'bbbbbbbb-1111', 'cccccccc-2222']);
+  assert.deepEqual(kept, []);
+  assert.deepEqual(unknown, []);
+  assert.deepEqual(ambiguous, []);
+});
+
+test('selectEntries reports keys that match nothing, or more than one session', () => {
+  const entries = [{ id: 'aaaa1111', file: 'a.html' }, { id: 'aaaa2222', file: 'b.html' }];
+  const result = selectEntries(entries, ['zzzz', 'aaaa', 'aa']);
+  assert.deepEqual(result.removed, []);
+  assert.equal(result.kept.length, 2);
+  // too short to count as a prefix, so it matches nothing
+  assert.deepEqual(result.unknown, ['zzzz', 'aa']);
+  assert.deepEqual(result.ambiguous, ['aaaa']);
+});
+
+test('shellQuote single-quotes a path, including one with a quote in it', () => {
+  assert.equal(shellQuote('/a b/c'), "'/a b/c'");
+  assert.equal(shellQuote("/it's"), "'/it'\\''s'");
+});
+
+test('renderIndexPage offers delete actions only when given a delete command', () => {
+  const entries = [libraryEntry(sampleStory(), { file: 'x.html' })];
+  const plain = renderIndexPage(entries, { cwd: '/proj' });
+  assert.ok(!plain.includes('class="card-delete"'), 'no delete buttons without a command');
+  assert.ok(!plain.includes('class="lib-delete-all"'));
+
+  const html = renderIndexPage(entries, { cwd: '/proj', deleteCommand: "node '/bin/story.mjs' delete --library '/proj/.session-stories'" });
+  assert.match(html, /class="card-delete"[^>]*data-id="eb076ea5-5cf4-4dfa-9afd-44894bf556a6"/);
+  assert.match(html, /class="lib-delete-all"/);
+  assert.match(html, /data-delete-command="node &#39;\/bin\/story\.mjs&#39; delete --library &#39;\/proj\/\.session-stories&#39;"/);
+  // a button inside a link is invalid markup, so the card link and its delete button are siblings
+  assert.match(html, /<div class="session-item"[^>]*><a class="session-card"/);
 });

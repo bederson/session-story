@@ -114,7 +114,10 @@ session" / "/story".
    page also gets a session switcher in its nav. Re-rendering the same
    session overwrites its file and refreshes its index entry. Pass
    `--library <dir>` for another folder, or `-o <file>` / `--no-library`
-   for a single standalone page with no library around it.
+   for a single standalone page with no library around it. To remove
+   sessions from the library, run `node bin/story.mjs delete
+   <session-id>...` (or `--all`). It deletes their pages and rewrites the
+   index; an id prefix of 4 or more characters is enough.
 
 5. Report both paths — the story page and `.session-stories/index.html` —
    and the header numbers (turns, files, lines added/removed, outcome) to

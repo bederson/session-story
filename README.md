@@ -92,7 +92,7 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 
 The metrics sections appear for stories extracted with trace data; an older `story.json` renders the Report without them.
 
-The session library offers sorting, a compact layout, a "Not recorded" outcome filter and Clear filters.
+The session library offers sorting, a compact layout, a "Not recorded" outcome filter and Clear filters. Each card also has a delete button, and there is a Delete all button. The page is a static file and cannot delete anything itself, so each button copies the `story.mjs delete` command that does it; run that command in a terminal, then reload the page.
 
 Two toggles in the nav apply across the views, and persist across visits:
 
@@ -124,6 +124,8 @@ node bin/story.mjs extract [--session <id>|--latest] [--cwd <dir>] [--no-chain] 
 node bin/story.mjs validate story.json [--strict]
 node bin/story.mjs render story.json [--library <dir>|-o story.html|--no-library] [--open]
 node bin/story.mjs export story.json [--template pr|handoff] [-o out.md] [--all-files]
+node bin/story.mjs delete <session-id|id-prefix|file>... [--library <dir>]
+node bin/story.mjs delete --all [--library <dir>]
 ```
 
 Run without any Claude-written summaries, `render` falls back to the first line of each prompt as the turn's label.

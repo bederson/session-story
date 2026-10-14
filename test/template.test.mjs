@@ -18,7 +18,7 @@ function sampleStory() {
 
 test('renderPage stamps the page with the time it was rendered, or the time it is given', () => {
   const before = Date.now();
-  const stamped = renderPage(sampleStory()).match(/class="generated"[^>]*>.*?<time datetime="([^"]+)"/);
+  const stamped = renderPage(sampleStory()).match(/class="generated"[^>]*>.*?<time class="local-time" datetime="([^"]+)"/);
   assert.ok(stamped, 'header carries a generation time');
   const at = new Date(stamped[1]).getTime();
   assert.ok(at >= before - 1000 && at <= Date.now() + 1000, `stamped ${stamped[1]}`);
@@ -236,7 +236,7 @@ test('renderPage renders code on demand: on pick, file open, Story toggle, Full 
 test('renderPage carries every lens inert and wires each the first time it is shown', () => {
   const html = renderPage(Object.assign(storyWithCode(), { trace: { events: [] } }));
   for (const lens of ['review', 'diff', 'story', 'report']) {
-    assert.match(html, new RegExp(`id="lens-${lens}" role="tabpanel" aria-labelledby="tab-${lens}"><template data-inert>`));
+    assert.match(html, new RegExp(`id="lens-${lens}" role="tabpanel" aria-labelledby="tab-${lens}"><p class="lens-intro">[^<]+</p><template data-inert>`));
   }
   assert.match(html, /function activate\(el\)/);
   assert.match(html, /function ensureLens\(name\)/);

@@ -98,6 +98,41 @@ export function upsertEntry(entries, entry) {
     .sort((a, b) => lastActive(b).localeCompare(lastActive(a)));
 }
 
+/** Shortest id prefix that counts as naming a session. */
+const MIN_PREFIX = 4;
+
+/**
+ * Split the manifest by what `keys` name: a full session id, an id prefix
+ * (the 8 characters in each file name are enough), or a file name. A key
+ * that names nothing, or more than one session, is reported rather than
+ * guessed at, so a delete never removes a session nobody meant.
+ */
+export function selectEntries(entries, keys) {
+  const picked = new Set();
+  const unknown = [];
+  const ambiguous = [];
+  for (const key of keys) {
+    const exact = entries.filter((e) => e.id === key || e.file === key);
+    const hits = exact.length
+      ? exact
+      : key.length >= MIN_PREFIX ? entries.filter((e) => String(e.id).startsWith(key)) : [];
+    if (!hits.length) unknown.push(key);
+    else if (hits.length > 1) ambiguous.push(key);
+    else picked.add(hits[0]);
+  }
+  return {
+    removed: entries.filter((e) => picked.has(e)),
+    kept: entries.filter((e) => !picked.has(e)),
+    unknown,
+    ambiguous,
+  };
+}
+
+/** A POSIX shell word: single-quoted, with any single quote spliced in. */
+export function shellQuote(text) {
+  return `'${String(text).replace(/'/g, `'\\''`)}'`;
+}
+
 /**
  * The sidecar the story pages load. Only the fields the switcher needs, so
  * the file stays small even after a few hundred sessions.
@@ -166,8 +201,24 @@ body { padding-bottom: 64px; }
 .session-list.compact .card-summary { display: none; }
 .session-list.compact h2 { flex: 1 1 260px; margin: 0; font-size: 14px; }
 html:not(.js) .lib-view { display: none; }
+.session-item { position: relative; display: flex; }
+.session-item > .session-card { flex: 1; min-width: 0; }
+.session-item .card-top { padding-right: 30px; }
+.card-delete { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .15s ease, color .15s ease, border-color .15s ease; }
+.session-item:hover .card-delete, .card-delete:focus-visible { opacity: 1; }
+.card-delete:hover { color: var(--del); border-color: var(--border); background: var(--surface); }
+@media (hover: none) { .card-delete { opacity: 1; } }
+.session-list.compact .card-delete { top: 50%; transform: translateY(-50%); }
+.lib-delete-all { font: inherit; padding: 4px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--del); cursor: pointer; margin-left: auto; }
+.lib-delete-all:hover { border-color: var(--del); }
+.lib-cmd { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10; width: min(720px, calc(100vw - 32px)); display: grid; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-2); font-size: 13px; color: var(--text-2); }
+.lib-cmd p { margin: 0; padding-right: 24px; }
+.lib-cmd code { display: block; font-family: var(--mono); font-size: 12px; color: var(--text); background: var(--surface-3); border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; user-select: all; }
+.lib-cmd-actions { display: flex; align-items: center; gap: 10px; }
+.lib-cmd-actions button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+.lib-cmd-close { position: absolute; top: 8px; right: 8px; display: inline-flex; padding: 4px; border: none; background: none; color: var(--text-3); cursor: pointer; }
 .lib-count .roll-note { color: var(--text-3); }
-@media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle { display: none; } }
+@media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle, .card-delete, .lib-delete-all, .lib-cmd { display: none; } }
 `;
 
 const INDEX_SCRIPT = THEME_TOGGLE_JS + `
@@ -178,7 +229,7 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
   var input = document.querySelector('.lib-search input');
   var periodBar = document.querySelector('.lib-periods');
   var outcomeBar = document.querySelector('.lib-outcomes');
-  var cards = Array.prototype.slice.call(document.querySelectorAll('.session-card'));
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.session-item'));
   var empty = document.querySelector('.no-matches');
   var count = document.querySelector('.lib-count');
   if (!cards.length) return;
@@ -366,6 +417,63 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     if (outcomeBar) Array.prototype.forEach.call(outcomeBar.querySelectorAll('.lib-outcome-btn'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.outcomeFilter === 'all')); });
     apply();
   });
+  // The page is a file, so it cannot delete files itself: each delete button
+  // hands over the CLI command that does, and the index is rewritten by it.
+  var deleteCommand = list ? list.dataset.deleteCommand : '';
+  var cmdBox = document.querySelector('.lib-cmd');
+  function copyText(text, done) {
+    function fallback() {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed'; area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(area);
+      done(ok);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+    } else fallback();
+  }
+  function offerCommand(what, command) {
+    if (!cmdBox) return;
+    cmdBox.querySelector('.lib-cmd-what').textContent = what;
+    cmdBox.querySelector('code').textContent = command;
+    var status = cmdBox.querySelector('.lib-cmd-status');
+    status.textContent = '';
+    cmdBox.hidden = false;
+    copyText(command, function (ok) {
+      status.textContent = ok ? 'Copied to the clipboard.' : 'Select the command above to copy it.';
+    });
+  }
+  if (deleteCommand && cmdBox) {
+    Array.prototype.forEach.call(document.querySelectorAll('.card-delete'), function (b) {
+      b.hidden = false;
+      b.addEventListener('click', function () {
+        offerCommand('To delete \u201c' + b.dataset.title + '\u201d, run this in a terminal, then reload this page:',
+          deleteCommand + ' ' + b.dataset.id);
+      });
+    });
+    var allBtn = document.querySelector('.lib-delete-all');
+    if (allBtn) {
+      allBtn.hidden = false;
+      allBtn.addEventListener('click', function () {
+        offerCommand('To delete all ' + plural(cards.length, 'session') + ' in this library, run this in a terminal, then reload this page:',
+          deleteCommand + ' --all');
+      });
+    }
+    cmdBox.querySelector('.lib-cmd-copy').addEventListener('click', function () {
+      var status = cmdBox.querySelector('.lib-cmd-status');
+      copyText(cmdBox.querySelector('code').textContent, function (ok) {
+        status.textContent = ok ? 'Copied to the clipboard.' : 'Select the command above to copy it.';
+      });
+    });
+    cmdBox.querySelector('.lib-cmd-close').addEventListener('click', function () { cmdBox.hidden = true; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cmdBox.hidden = true; });
+  }
   var viewBar = document.querySelector('.lib-view');
   if (viewBar) viewBar.hidden = false;
   sortCards();
@@ -425,7 +533,7 @@ function usageOf(entry) {
 
 const dataNum = (v) => (isNum(v) ? String(v) : '');
 
-function sessionCard(entry) {
+function sessionCard(entry, deletable) {
   const totals = entry.totals || {};
   const usage = usageOf(entry);
   const tokens = [
@@ -437,13 +545,14 @@ function sessionCard(entry) {
     .filter(Boolean).join(' ').toLowerCase();
 
   return (
-    `<a class="session-card" href="${escapeHtml(entry.file)}" data-search="${escapeHtml(search)}"` +
+    `<div class="session-item" data-search="${escapeHtml(search)}"` +
     ` data-active="${escapeHtml(lastActive(entry))}" data-outcome="${escapeHtml(entry.outcome || 'unknown')}"` +
     ` data-turns="${totals.turns || 0}" data-title="${escapeHtml(String(entry.title || '').toLowerCase())}"` +
     ` data-duration="${dataNum(entry.duration_ms || null)}" data-changed="${(totals.added || 0) + (totals.removed || 0)}"` +
     ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
     ` data-cost="${dataNum(usage.cost_usd)}">` +
+    `<a class="session-card" href="${escapeHtml(entry.file)}">` +
     `<span class="card-top">` +
     `<span class="card-date" title="Last active">${icon('clock')}<time datetime="${escapeHtml(lastActive(entry))}">${escapeHtml(formatDate(lastActive(entry)))}</time></span>` +
     outcomePill(entry.outcome) +
@@ -460,7 +569,13 @@ function sessionCard(entry) {
     (usage.cost_usd !== null ? `<span>${icon('cost')}${formatCost(usage.cost_usd)}</span>` : '') +
     (chain > 1 ? `<span class="card-chain">${icon('branch')}${chain} joined</span>` : '') +
     `</span>` +
-    `</a>`
+    `</a>` +
+    (deletable
+      ? `<button type="button" class="card-delete" data-id="${escapeHtml(entry.id)}"` +
+        ` data-title="${escapeHtml(entry.title || 'Session story')}" aria-label="Delete this session" title="Delete this session" hidden>` +
+        `${icon('trash')}</button>`
+      : '') +
+    `</div>`
   );
 }
 
@@ -468,8 +583,10 @@ function sessionCard(entry) {
  * The gallery: one card per session, newest first, with a client-side
  * filter. Self-contained like the story pages, and links to them by
  * relative path so the whole folder can be moved or zipped as a unit.
+ * `deleteCommand` is the shell command, short of its ids, that deletes
+ * from this library; without it the page offers no delete actions.
  */
-export function renderIndexPage(entries, { cwd = '' } = {}) {
+export function renderIndexPage(entries, { cwd = '', deleteCommand = '' } = {}) {
   const project = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : 'Session stories';
   const rollup = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
   const known = { input: 0, output: 0, cost: 0 };
@@ -510,10 +627,19 @@ export function renderIndexPage(entries, { cwd = '' } = {}) {
       `<option value="changed">Most changed lines</option></select></label>` +
       `<span role="group" aria-label="Layout"><button type="button" class="lib-mode" data-mode="cards" aria-pressed="true">Cards</button> ` +
       `<button type="button" class="lib-mode" data-mode="compact" aria-pressed="false">Compact</button></span>` +
-      `<button type="button" class="lib-clear" hidden>Clear filters</button></div>` +
+      `<button type="button" class="lib-clear" hidden>Clear filters</button>` +
+      (deleteCommand ? `<button type="button" class="lib-delete-all" hidden>Delete all</button>` : '') +
+      `</div>` +
       count +
-      `<div class="session-list">${entries.map(sessionCard).join('')}</div>` +
-      `<p class="no-matches" hidden>No sessions match these filters. Use Clear filters to see all.</p>`
+      `<div class="session-list"${deleteCommand ? ` data-delete-command="${escapeHtml(deleteCommand)}"` : ''}>` +
+      `${entries.map((e) => sessionCard(e, Boolean(deleteCommand))).join('')}</div>` +
+      `<p class="no-matches" hidden>No sessions match these filters. Use Clear filters to see all.</p>` +
+      (deleteCommand
+        ? `<div class="lib-cmd" role="status" hidden><p class="lib-cmd-what"></p><code></code>` +
+          `<div class="lib-cmd-actions"><button type="button" class="lib-cmd-copy">Copy</button>` +
+          `<span class="lib-cmd-status"></span></div>` +
+          `<button type="button" class="lib-cmd-close" aria-label="Close">${icon('cross')}</button></div>`
+        : '')
     : `<p class="lib-empty">No sessions yet. Run <code>story render</code> and this page will list it.</p>`;
 
   return (

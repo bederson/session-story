@@ -391,3 +391,65 @@ test('export writes PR or handoff markdown to stdout or to -o, and rejects an un
   );
   await assert.rejects(() => run('node', [binPath, 'export']), (err) => err.code === 1 && /usage: story\.mjs export/.test(err.stderr));
 });
+
+async function twoSessionLibrary() {
+  const workdir = await mkdtemp(path.join(tmpdir(), 'story-del-'));
+  const libDir = path.join(workdir, 'lib');
+  for (const [name, id, title, startedAt] of [
+    ['first', 'aaaaaaaa-0000', 'Add a session browser', '2026-09-14T10:00:00.000Z'],
+    ['second', 'bbbbbbbb-1111', 'Fix the diff lens', '2026-09-12T09:00:00.000Z'],
+  ]) {
+    const storyPath = path.join(workdir, `${name}.json`);
+    await writeFile(storyPath, JSON.stringify(storyFixture({ id, title, startedAt })));
+    await run('node', [binPath, 'render', storyPath, '--library', libDir]);
+  }
+  return { workdir, libDir };
+}
+
+test('the library index carries a delete command that names this CLI and library', async () => {
+  const { libDir } = await twoSessionLibrary();
+  const index = await readFile(path.join(libDir, 'index.html'), 'utf8');
+  assert.ok(index.includes(`data-delete-command="node &#39;${binPath}&#39; delete --library &#39;${libDir}&#39;"`));
+  assert.equal(index.match(/class="card-delete"/g).length, 2);
+});
+
+test('delete removes one session: its page, its manifest entry, and its card', async () => {
+  const { libDir } = await twoSessionLibrary();
+  const { stderr } = await run('node', [binPath, 'delete', '--library', libDir, 'bbbbbbbb']);
+  assert.match(stderr, /Deleted 1 session/);
+
+  const files = (await readdir(libDir)).sort();
+  assert.deepEqual(files, ['2026-09-14-aaaaaaaa-add-a-session-browser.html', 'index.html', 'index.json', 'sessions.js']);
+  const manifest = JSON.parse(await readFile(path.join(libDir, 'index.json'), 'utf8'));
+  assert.deepEqual(manifest.entries.map((e) => e.id), ['aaaaaaaa-0000']);
+  assert.equal(manifest.cwd, '/proj');
+  const index = await readFile(path.join(libDir, 'index.html'), 'utf8');
+  assert.equal(index.match(/class="session-card"/g).length, 1);
+  assert.ok(!(await readFile(path.join(libDir, 'sessions.js'), 'utf8')).includes('bbbbbbbb'));
+});
+
+test('delete --all empties the library but keeps an index to come back to', async () => {
+  const { libDir } = await twoSessionLibrary();
+  await run('node', [binPath, 'delete', '--library', libDir, '--all']);
+  assert.deepEqual((await readdir(libDir)).sort(), ['index.html', 'index.json', 'sessions.js']);
+  const manifest = JSON.parse(await readFile(path.join(libDir, 'index.json'), 'utf8'));
+  assert.deepEqual(manifest.entries, []);
+  assert.match(await readFile(path.join(libDir, 'index.html'), 'utf8'), /No sessions yet/);
+});
+
+test('delete refuses an unknown id and changes nothing', async () => {
+  const { libDir } = await twoSessionLibrary();
+  await assert.rejects(
+    run('node', [binPath, 'delete', '--library', libDir, 'aaaaaaaa', 'zzzzzzzz']),
+    (err) => /no session matches zzzzzzzz/.test(err.stderr)
+  );
+  assert.equal((await readdir(libDir)).length, 5);
+});
+
+test('delete without ids or --all prints usage', async () => {
+  const { libDir } = await twoSessionLibrary();
+  await assert.rejects(
+    run('node', [binPath, 'delete', '--library', libDir]),
+    (err) => /usage: story\.mjs delete/.test(err.stderr)
+  );
+});
