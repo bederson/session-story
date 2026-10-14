@@ -65,7 +65,7 @@ export function storyFileName(story) {
 }
 
 /** One manifest record: everything the index and the switcher render from. */
-export function libraryEntry(story, { file }) {
+export function libraryEntry(story, { file, generatedAt }) {
   const { session, totals } = story;
   return {
     file,
@@ -80,7 +80,7 @@ export function libraryEntry(story, { file }) {
     totals: totals || { turns: 0, files: 0, added: 0, removed: 0, edits: 0 },
     usage: usageTotals(story),
     outcome: (story.report && story.report.outcome) || null,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt || new Date().toISOString(),
   };
 }
 

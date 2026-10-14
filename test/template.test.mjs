@@ -16,6 +16,16 @@ function sampleStory() {
   };
 }
 
+test('renderPage stamps the page with the time it was rendered, or the time it is given', () => {
+  const before = Date.now();
+  const stamped = renderPage(sampleStory()).match(/class="generated"[^>]*>.*?<time datetime="([^"]+)"/);
+  assert.ok(stamped, 'header carries a generation time');
+  const at = new Date(stamped[1]).getTime();
+  assert.ok(at >= before - 1000 && at <= Date.now() + 1000, `stamped ${stamped[1]}`);
+
+  assert.match(renderPage(sampleStory(), { generatedAt: '2026-10-14T09:12:33.000Z' }), /datetime="2026-10-14T09:12:33.000Z"/);
+});
+
 test('renderPage produces a full HTML document with a title and all three lens sections', () => {
   const html = renderPage(sampleStory());
 

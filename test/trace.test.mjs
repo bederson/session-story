@@ -92,7 +92,14 @@ test('pickCostState keeps the totals and per-model usage, with nulls for missing
   assert.deepEqual(pickCostState({ type: 'cost-state', totalCostUSD: 0.75, modelUsage: { 'claude-opus-5-5': { inputTokens: 1 } } }), {
     total_cost_usd: 0.75, total_api_duration_ms: null, total_tool_duration_ms: null,
     model_usage: { 'claude-opus-5-5': { inputTokens: 1 } }, has_unknown_model_cost: false,
+    session_id: null, start_time: null,
   });
+});
+
+test('pickCostState keeps the session id and start time that identify the process', () => {
+  const s = pickCostState({ type: 'cost-state', sessionId: 's1', startTime: 1789828455770, totalCostUSD: 1 });
+  assert.equal(s.session_id, 's1');
+  assert.equal(s.start_time, 1789828455770);
 });
 
 test('parseTaskNotifications reads every notification block, keyed by its tool-use-id', () => {

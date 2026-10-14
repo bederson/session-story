@@ -144,7 +144,10 @@ export function usageTotals(acc) {
   return { ...totals, api_calls: acc.byMessage.size, models: [...acc.models].sort(), complete };
 }
 
-/** The session-level totals Claude Code writes in a `cost-state` record at exit. */
+/**
+ * The session-level totals Claude Code writes in a `cost-state` record. A
+ * process can write several, each a running total since its `startTime`.
+ */
 export function pickCostState(record) {
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   return {
@@ -153,6 +156,8 @@ export function pickCostState(record) {
     total_tool_duration_ms: num(record.totalToolDuration),
     model_usage: record.modelUsage && typeof record.modelUsage === 'object' ? record.modelUsage : {},
     has_unknown_model_cost: !!record.hasUnknownModelCost,
+    session_id: typeof record.sessionId === 'string' ? record.sessionId : null,
+    start_time: num(record.startTime),
   };
 }
 

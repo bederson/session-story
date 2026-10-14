@@ -105,6 +105,31 @@ test('usage prefers cost-state totals and reports the cost', () => {
   assert.deepEqual(m.usage, { input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, total_cost_usd: 0.05, models: ['claude-opus-5-5'], source: 'cost-state', complete: true });
 });
 
+test('usage counts only the last of several running-total cost-states from one process', () => {
+  const state = (cost, out) => ({
+    session_id: 's1', start_time: 100, total_cost_usd: cost, has_unknown_model_cost: false,
+    model_usage: { 'claude-opus-5-5': { inputTokens: 10, outputTokens: out, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } },
+  });
+  const m = computeMetrics(story({ costStates: [state(40, 100), state(50, 150), state(64, 200)] }));
+  assert.equal(m.usage.total_cost_usd, 64);
+  assert.equal(m.usage.output_tokens, 200);
+  assert.equal(m.usage.input_tokens, 10);
+  assert.equal(m.usage.complete, true);
+});
+
+test('usage sums the cost-states of different sessions in a chain', () => {
+  const state = (id, cost) => ({ session_id: id, start_time: 100, total_cost_usd: cost, model_usage: {} });
+  const session = { id: 's2', chain: ['s1', 's2'], started_at: '2026-10-08T10:00:00.000Z', ended_at: '2026-10-08T10:00:18.500Z' };
+  const m = computeMetrics(story({ session, costStates: [state('s1', 1), state('s2', 2)] }));
+  assert.equal(m.usage.total_cost_usd, 3);
+  assert.equal(m.usage.complete, true);
+});
+
+test('usage sums cost-states that carry no session id, as older stories did', () => {
+  const m = computeMetrics(story({ costStates: [{ total_cost_usd: 1, model_usage: {} }, { total_cost_usd: 2, model_usage: {} }] }));
+  assert.equal(m.usage.total_cost_usd, 3);
+});
+
 test('usage sums turn and subagent usage with a null cost when there is no cost-state', () => {
   const turns = [
     { index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], usage: { input_tokens: 1, output_tokens: 2, cache_read_tokens: 3, cache_creation_tokens: 4, api_calls: 1, models: ['claude-opus-5-5'], complete: true } },

@@ -281,13 +281,16 @@ async function writeLibrary(story, dir) {
   await mkdir(dir, { recursive: true });
 
   const file = storyFileName(story);
+  // One stamp for the page and its index entry, so the two agree.
+  const generatedAt = new Date().toISOString();
   const html = renderPage(story, {
     library: { indexHref: INDEX_FILE, manifestHref: SESSIONS_FILE },
+    generatedAt,
   });
   const outPath = path.join(dir, file);
   await writeFile(outPath, html);
 
-  const entries = upsertEntry(await readManifest(dir), libraryEntry(story, { file }));
+  const entries = upsertEntry(await readManifest(dir), libraryEntry(story, { file, generatedAt }));
   await writeFile(
     path.join(dir, MANIFEST_FILE),
     JSON.stringify({ version: 1, cwd: story.session.cwd || '', entries }, null, 2)

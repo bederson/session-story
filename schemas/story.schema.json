@@ -985,7 +985,7 @@
         },
         "cost_states": {
           "type": "array",
-          "description": "Claude Code's session-level cost-state records (written at session exit, so usually absent for a live session), one per joined session.",
+          "description": "Claude Code's session-level cost-state records (written at session exit, so usually absent for a live session). A session can carry several running-total records; the last of each session_id and start_time counts.",
           "items": {
             "type": "object",
             "properties": {
@@ -1012,6 +1012,19 @@
               },
               "has_unknown_model_cost": {
                 "type": "boolean"
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "With start_time, identifies the process; its records are running totals, so only the last one counts."
+              },
+              "start_time": {
+                "type": [
+                  "number",
+                  "null"
+                ]
               }
             }
           }

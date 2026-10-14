@@ -132,7 +132,21 @@ const NO_USAGE = Object.freeze({
   total_cost_usd: null, models: [], source: 'none', complete: false,
 });
 
-function usageFromCostStates(states, links) {
+// Cost-state records are running totals, so a process that writes several
+// (same session and start time) counts only through its last one. Records
+// without those fields, from older story JSON, each count on their own.
+function latestCostStates(states) {
+  const latest = new Map();
+  states.forEach((s, i) => {
+    const key = s.session_id && s.start_time !== null && s.start_time !== undefined
+      ? `${s.session_id}@${s.start_time}` : `#${i}`;
+    latest.set(key, s);
+  });
+  return [...latest.values()];
+}
+
+function usageFromCostStates(allStates, links) {
+  const states = latestCostStates(allStates);
   const totals = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0 };
   const models = new Set();
   let cost = 0;

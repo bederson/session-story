@@ -280,7 +280,12 @@ export function statTile(name, value, label, extraClass = '') {
   );
 }
 
-export function renderHeader(story) {
+/**
+ * @param {object} story
+ * @param {{generatedAt?: string}} [opts] - when this page was rendered (ISO
+ *   8601); shown in the header so a reader knows how fresh the page is
+ */
+export function renderHeader(story, opts = {}) {
   const { session, totals } = story;
   const report = story.report || null;
   const title = storyTitle(story);
@@ -326,6 +331,10 @@ export function renderHeader(story) {
     (session.git_branch ? `<span class="branch">${icon('branch')}<span>${escapeHtml(session.git_branch)}</span></span>` : '') +
     `<span class="duration">${icon('clock')}<span>${formatDuration(session.duration_ms)}${started ? ` · ${started}` : ''}</span></span>` +
     commitRange +
+    (opts.generatedAt
+      ? `<span class="generated" title="When this page was generated">${icon('sparkle')}<span>Generated ` +
+        `<time datetime="${escapeHtml(opts.generatedAt)}">${formatDate(opts.generatedAt)}</time></span></span>`
+      : '') +
     `</div>` +
     (session.summary ? `<p class="summary">${escapeHtml(session.summary)}</p>` : '') +
     `<div class="totals">` +

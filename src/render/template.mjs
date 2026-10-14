@@ -737,6 +737,9 @@ const LIBRARY_SCRIPT = `
 export function renderPage(story, opts = {}) {
   const title = storyTitle(story);
   const library = opts.library || null;
+  // The page says when it was made: a story can be re-rendered long after
+  // the session, and the tree it reads git from moves on.
+  const generatedAt = opts.generatedAt || new Date().toISOString();
   const turnCount = story.totals ? story.totals.turns : (story.turns ? story.turns.length : 0);
   const fileCount = story.totals ? story.totals.files : (story.files ? story.files.length : 0);
 
@@ -752,7 +755,7 @@ export function renderPage(story, opts = {}) {
     `<style>${STYLE}</style>\n` +
     `</head>\n` +
     `<body>\n` +
-    renderHeader(story) +
+    renderHeader(story, { generatedAt }) +
     `<nav class="lens-nav">` +
     libraryNav(story, opts.library) +
     `<div class="tabs" role="tablist" aria-label="Views">` +
