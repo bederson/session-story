@@ -99,7 +99,7 @@ session" / "/story".
    node bin/story.mjs render <scratch>/story.json --open
    ```
    This writes a self-contained HTML file (no server, no dependencies)
-   with five switchable views — Review (timeline + Claude's output + diff,
+   with four switchable views — Review (timeline + Claude's output + diff,
    for you), Diff
    (file tree, GitHub-style, for a teammate), Story (narrative cards with Claude's
    output, for a stakeholder), Report (plan, commands, tests, errors, decisions,
