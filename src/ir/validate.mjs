@@ -14,6 +14,8 @@ const OUTCOME_VALUES = ['completed', 'partial', 'failed', 'blocked'];
 /** The header is a heading and one tight paragraph; keep both readable there. */
 const TITLE_MAX = 60;
 const SUMMARY_MAX = 240;
+/** A turn's answer stands in for Claude's replies; a few sentences at most. */
+const ANSWER_MAX = 400;
 
 function pushIfMissing(errors, obj, field, prefix) {
   if (obj[field] === undefined) {
@@ -53,6 +55,14 @@ export function validateStory(story, { strict = false } = {}) {
       }
       if (strict && !turn.summary) {
         errors.push(`${turnPrefix}.summary is required in strict mode but is empty`);
+      }
+      if (turn.answer !== undefined && turn.answer !== null && typeof turn.answer !== 'string') {
+        errors.push(`${turnPrefix}.answer must be a string`);
+      } else if (typeof turn.answer === 'string' && turn.answer.length > ANSWER_MAX) {
+        errors.push(`${turnPrefix}.answer must be at most ${ANSWER_MAX} characters but is ${turn.answer.length}`);
+      }
+      if (strict && Array.isArray(turn.replies) && turn.replies.length > 0 && !turn.answer) {
+        errors.push(`${turnPrefix}.answer is required in strict mode when the turn has replies, but is empty`);
       }
     });
   }

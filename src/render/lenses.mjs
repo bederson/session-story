@@ -470,26 +470,35 @@ function renderFileFilter(edits) {
 }
 
 /**
- * What Claude said during a turn, shown above its diffs: the final reply in
- * full, any earlier ones folded behind a <details>. Empty when the turn has
- * no replies (older stories never carry them).
+ * What Claude said during a turn, shown above its diffs: Claude's short
+ * summary of its answer (`turn.answer`, written in the skill's summarize
+ * step), with every original reply folded behind a <details>. Stories
+ * without an answer fall back to the final reply in full. Empty when the
+ * turn has neither.
  */
 function renderReplies(turn) {
   const replies = turn.replies || [];
-  if (replies.length === 0) return '';
+  const answer = turn.answer || '';
+  if (replies.length === 0 && !answer) return '';
   const reply = (r, extra = '') =>
     `<div class="reply${extra}">${turnTime(r)}${escapeHtml(r.text)}</div>`;
-  const earlier = replies.slice(0, -1);
-  const folded = earlier.length > 0
-    ? `<details class="replies-earlier"><summary>${earlier.length} earlier ${plural(earlier.length, 'message')}</summary>` +
-      earlier.map((r) => reply(r)).join('') +
+  const shown = answer
+    ? `<div class="reply reply-final reply-answer">${escapeHtml(answer)}</div>`
+    : reply(replies[replies.length - 1], ' reply-final');
+  const folded = answer ? replies : replies.slice(0, -1);
+  const label = answer
+    ? `${folded.length} original ${plural(folded.length, 'message')}`
+    : `${folded.length} earlier ${plural(folded.length, 'message')}`;
+  const details = folded.length > 0
+    ? `<details class="replies-earlier"><summary>${label}</summary>` +
+      folded.map((r) => reply(r)).join('') +
       `</details>`
     : '';
   return (
     `<div class="turn-replies">` +
     `<div class="replies-head">${icon('story')}<span>Claude’s output</span></div>` +
-    folded +
-    reply(replies[replies.length - 1], ' reply-final') +
+    shown +
+    details +
     `</div>`
   );
 }

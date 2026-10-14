@@ -166,3 +166,23 @@ test('accepts metrics with or without a per-turn list, and rejects a malformed o
   assert.ok(bad.some((e) => /metrics\.turns\[0\]\.index/.test(e)));
   assert.ok(bad.some((e) => /metrics\.turns\[0\]\.duration_source/.test(e)));
 });
+
+test("strict mode requires an answer on turns that have replies, and caps its length", () => {
+  const story = minimalStory({
+    report: { plan: 'p', decisions: [], outcome: 'completed', outcome_note: null },
+  });
+  story.session.title = 'Title';
+  story.session.summary = 'Summary.';
+  story.turns[0].summary = 'Did it.';
+  story.turns[0].replies = [{ at: null, text: 'Done.' }];
+
+  assert.match(validateStory(story, { strict: true }).errors.join('\n'), /turns\[0\]\.answer is required in strict mode/);
+  // Non-strict stories (and older ones) render without an answer.
+  assert.equal(validateStory(story).valid, true);
+
+  story.turns[0].answer = 'Made the change and the tests pass.';
+  assert.deepEqual(validateStory(story, { strict: true }).errors, []);
+
+  story.turns[0].answer = 'x'.repeat(401);
+  assert.match(validateStory(story).errors.join('\n'), /turns\[0\]\.answer must be at most 400 characters/);
+});

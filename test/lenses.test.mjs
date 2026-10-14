@@ -563,6 +563,36 @@ test("renderReviewLens shows Claude's output above the diffs, folding all but th
   assert.doesNotMatch(panel(3), /turn-replies/);
 });
 
+test("Review and Story show the turn's answer as Claude's output and fold every original reply", async () => {
+  const { renderReviewLens, renderStoryLens } = await import('../src/render/lenses.mjs');
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: null, prompt: 'p1', summary: 's1', answer: 'Fixed <it>; tests pass.', edits: [], replies: [
+        { at: null, text: 'Looking around' },
+        { at: null, text: 'All done' },
+      ] },
+      { index: 2, id: 'u2', at: null, prompt: 'p2', summary: 's2', answer: 'Only an answer', edits: [] },
+    ],
+    files: [],
+  });
+
+  const panel = renderReviewLens(story).split('data-turn-panel="1"')[1].split('</section>')[0];
+  const card = renderStoryLens(story).split('<article class="story-card">')[1];
+  for (const html of [panel, card]) {
+    assert.match(html, /class="reply reply-final reply-answer">Fixed &lt;it&gt;; tests pass\.<\/div>/);
+    assert.match(html, /<summary>2 original messages<\/summary>/);
+    // Both replies sit inside the fold, after the answer.
+    const fold = html.split('<details class="replies-earlier">')[1].split('</details>')[0];
+    assert.match(fold, /Looking around/);
+    assert.match(fold, /All done/);
+    assert.ok(html.indexOf('reply-answer') < html.indexOf('replies-earlier'));
+  }
+
+  const panel2 = renderReviewLens(story).split('data-turn-panel="2"')[1].split('</section>')[0];
+  assert.match(panel2, /Only an answer/);
+  assert.doesNotMatch(panel2, /<details class="replies-earlier"/);
+});
+
 test("renderStoryLens shows Claude's output on a card, and nothing extra when a turn has no replies", async () => {
   const { renderStoryLens } = await import('../src/render/lenses.mjs');
   const story = sampleStory({

@@ -160,6 +160,7 @@ html.js .turn-panel:not(.active) { display: none; }
 .turn-replies { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
 .replies-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .replies-head .icon { color: var(--accent-ink); }
+.replies-earlier { margin-top: 8px; }
 .replies-earlier > summary { cursor: pointer; font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
 .replies-earlier > summary:hover { color: var(--text-2); }
 .reply { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; color: var(--text); }

@@ -36,7 +36,7 @@ session" / "/story".
    prints a projection to stdout — **read only this projection, never the
    full story.json's hunks.** It carries, per turn: `prompt`,
    `edits[].{rel, kind, stats}`, `commands[].{command, category, ok,
-   exit_code}`, `errors[].{tool, target, message}`, and `plan.{approved,
+   exit_code}`, `replies` (Claude's text replies, the last one longest), `errors[].{tool, target, message}`, and `plan.{approved,
    excerpt}` when a plan was proposed. An edit carrying `combined_into: N`
    is a file this turn changed through the shell whose diff git could only
    keep as the session's net change, shown on turn N — the turn did change
@@ -73,6 +73,13 @@ session" / "/story".
      framing belongs in `report.plan`.
    - `turns[N].summary`: one sentence of intent per turn, in the same
      order as the brief output.
+   - `turns[N].answer`: for every turn whose brief `replies` is not empty,
+     a short summary (1-3 sentences, at most 400 characters) of what
+     Claude answered or reported back to that prompt — the findings, the
+     result, or the question it asked — written from `replies`. Review and
+     Story show it as Claude's output and fold the original replies away,
+     so it must stand on its own. Report only what the replies say; leave
+     it out for turns with no replies.
    - `report.plan`: 2-4 sentences on what the session set out to do.
      Use any `turns[N].plan.excerpt` as source material when present.
    - `report.decisions`: notable technical decisions worth calling out
@@ -99,7 +106,8 @@ session" / "/story".
    node bin/story.mjs render <scratch>/story.json --open
    ```
    This writes a self-contained HTML file (no server, no dependencies)
-   with four switchable views — Review (timeline + Claude's output + diff,
+   with four switchable views — Review (timeline + a summary of Claude’s
+   output, the original replies folded + diff,
    for you), Diff
    (file tree, GitHub-style, for a teammate), Story (narrative cards with Claude's
    output, for a stakeholder), Report (plan, commands, tests, errors, decisions,

@@ -70,6 +70,18 @@ function toolCallsInTurn(story, index) {
   return events.filter((e) => e.turn === index && e.kind !== 'prompt').length;
 }
 
+/**
+ * Claude's replies in a turn, as source for `turns[N].answer`. The last one
+ * usually carries the answer, so it keeps more text; earlier ones are
+ * progress notes and are cut short.
+ */
+function briefReplies(replies) {
+  return replies.map((r, i) => {
+    const max = i === replies.length - 1 ? 2000 : 300;
+    return r.text.length > max ? `${r.text.slice(0, max)}…` : r.text;
+  });
+}
+
 function briefProjection(story) {
   const perTurn = new Map(((story.metrics && story.metrics.turns) || []).map((t) => [t.index, t]));
   return {
@@ -105,6 +117,7 @@ function briefProjection(story) {
       commands: (t.bash || []).map((b) => ({ command: b.command, category: b.category, ok: b.ok, exit_code: b.exit_code })),
       errors: (t.errors || []).map((e) => ({ tool: e.tool, target: e.target, message: e.message })),
       plan: t.plan ? { approved: t.plan.approved, excerpt: t.plan.text.slice(0, 1500) } : null,
+      replies: briefReplies(t.replies || []),
       duration_ms: t.duration_ms === undefined ? null : t.duration_ms,
       tool_calls: toolCallsInTurn(story, t.index),
       output_tokens: perTurn.has(t.index) ? perTurn.get(t.index).output_tokens : null,

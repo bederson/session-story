@@ -42,6 +42,8 @@ test('extract -> validate -> render produces a story.json and story.html matchin
   assert.ok('hints' in brief);
   assert.ok(Array.isArray(brief.turns[0].commands));
   assert.ok(Array.isArray(brief.turns[0].errors));
+  // Claude's replies are the source for turns[N].answer
+  assert.ok(Array.isArray(brief.turns[0].replies));
 
   // non-strict validate passes even though summaries and report are empty
   await run('node', [binPath, 'validate', storyJsonPath]);

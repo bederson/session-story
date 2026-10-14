@@ -130,9 +130,17 @@
             "type": "string",
             "description": "Filled in by Claude; required non-empty in strict validation."
           },
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 400,
+            "description": "Filled in by Claude: a short summary of what Claude answered or reported back for this turn's prompt, written from its replies. Review and Story show it as Claude's output with the original replies folded away. Required non-empty in strict validation when the turn has replies."
+          },
           "replies": {
             "type": "array",
-            "description": "Claude's text replies during this turn, in order (main thread only; thinking and subagent text left out). The Review lens shows them above the turn's diffs.",
+            "description": "Claude's text replies during this turn, in order (main thread only; thinking and subagent text left out). Review and Story fold them behind the turn's answer.",
             "items": {
               "type": "object",
               "required": [
