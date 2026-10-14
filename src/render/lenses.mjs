@@ -561,7 +561,20 @@ export function renderReviewLens(story) {
     `<div class="review-lens">` +
     `<ol class="timeline">${timelineItems}</ol>` +
     `<div class="turn-panels">${panels}</div>` +
+    renderStepNav(story.turns.length) +
     `</div>`
+  );
+}
+
+// Floating previous/next buttons for stepping through the turns; j / k do the same.
+function renderStepNav(count) {
+  if (count < 2) return '';
+  return (
+    `<nav class="step-nav" aria-label="Step through turns">` +
+    `<button type="button" class="step-btn" data-step="-1" aria-label="Previous step" title="Previous step (k)" disabled>${icon('prev')}</button>` +
+    `<span class="step-pos" aria-live="polite">1 / ${count}</span>` +
+    `<button type="button" class="step-btn" data-step="1" aria-label="Next step" title="Next step (j)">${icon('next')}</button>` +
+    `</nav>`
   );
 }
 

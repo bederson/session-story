@@ -406,11 +406,37 @@ async function twoSessionLibrary() {
   return { workdir, libDir };
 }
 
-test('the library index carries a delete command that names this CLI and library', async () => {
+test('the library index offers hide buttons keyed to its folder, and no command to run', async () => {
   const { libDir } = await twoSessionLibrary();
   const index = await readFile(path.join(libDir, 'index.html'), 'utf8');
-  assert.ok(index.includes(`data-delete-command="node &#39;${binPath}&#39; delete --library &#39;${libDir}&#39;"`));
-  assert.equal(index.match(/class="card-delete"/g).length, 2);
+  assert.ok(index.includes(`data-library="${libDir}"`));
+  assert.equal(index.match(/class="card-hide"/g).length, 2);
+  assert.ok(!index.includes('delete-command'));
+});
+
+test('delete refuses a running session unless --force, and --all keeps it', async () => {
+  const { workdir, libDir } = await twoSessionLibrary();
+  const sessionsDir = path.join(workdir, 'sessions');
+  await mkdir(sessionsDir);
+  // this test process stands in for the Claude Code process running the session
+  await writeFile(path.join(sessionsDir, `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'bbbbbbbb-1111' }));
+  const env = { ...process.env, STORY_CLAUDE_SESSIONS_DIR: sessionsDir };
+
+  await assert.rejects(
+    run('node', [binPath, 'delete', '--library', libDir, 'bbbbbbbb'], { env }),
+    (err) => /is still running; pass --force/.test(err.stderr) && /Nothing was deleted/.test(err.stderr)
+  );
+  assert.equal((await readdir(libDir)).length, 5);
+
+  const { stderr } = await run('node', [binPath, 'delete', '--library', libDir, '--all'], { env });
+  assert.match(stderr, /Kept 1 running session: Fix the diff lens/);
+  assert.match(stderr, /Deleted 1 session/);
+  const manifest = JSON.parse(await readFile(path.join(libDir, 'index.json'), 'utf8'));
+  assert.deepEqual(manifest.entries.map((e) => e.id), ['bbbbbbbb-1111']);
+  assert.match(await readFile(path.join(libDir, 'index.html'), 'utf8'), /class="live-pill"/);
+
+  await run('node', [binPath, 'delete', '--library', libDir, 'bbbbbbbb', '--force'], { env });
+  assert.deepEqual(JSON.parse(await readFile(path.join(libDir, 'index.json'), 'utf8')).entries, []);
 });
 
 test('delete removes one session: its page, its manifest entry, and its card', async () => {

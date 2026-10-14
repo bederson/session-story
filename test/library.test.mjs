@@ -8,6 +8,7 @@ import {
   renderIndexPage,
   selectEntries,
   shellQuote,
+  isLiveEntry,
 } from '../src/render/library.mjs';
 
 function sampleStory(overrides = {}) {
@@ -269,16 +270,42 @@ test('shellQuote single-quotes a path, including one with a quote in it', () => 
   assert.equal(shellQuote("/it's"), "'/it'\\''s'");
 });
 
-test('renderIndexPage offers delete actions only when given a delete command', () => {
+test('renderIndexPage offers hide actions only when given a library folder', () => {
   const entries = [libraryEntry(sampleStory(), { file: 'x.html' })];
   const plain = renderIndexPage(entries, { cwd: '/proj' });
-  assert.ok(!plain.includes('class="card-delete"'), 'no delete buttons without a command');
-  assert.ok(!plain.includes('class="lib-delete-all"'));
+  assert.ok(!plain.includes('class="card-hide"'), 'no hide buttons without a library');
+  assert.ok(!plain.includes('class="lib-hidden-toggle"'));
 
-  const html = renderIndexPage(entries, { cwd: '/proj', deleteCommand: "node '/bin/story.mjs' delete --library '/proj/.session-stories'" });
-  assert.match(html, /class="card-delete"[^>]*data-id="eb076ea5-5cf4-4dfa-9afd-44894bf556a6"/);
-  assert.match(html, /class="lib-delete-all"/);
-  assert.match(html, /data-delete-command="node &#39;\/bin\/story\.mjs&#39; delete --library &#39;\/proj\/\.session-stories&#39;"/);
-  // a button inside a link is invalid markup, so the card link and its delete button are siblings
+  const html = renderIndexPage(entries, { cwd: '/proj', library: '/proj/.session-stories' });
+  assert.match(html, /class="session-item"[^>]*data-id="eb076ea5-5cf4-4dfa-9afd-44894bf556a6"/);
+  assert.match(html, /class="card-hide"/);
+  assert.match(html, /class="lib-hidden-toggle"/);
+  assert.match(html, /data-library="\/proj\/\.session-stories"/);
+  // nothing on the page asks for a terminal any more
+  assert.ok(!html.includes('delete-command'));
+  assert.ok(!html.includes('class="lib-cmd"'));
+  // a button inside a link is invalid markup, so the card link and its buttons are siblings
   assert.match(html, /<div class="session-item"[^>]*><a class="session-card"/);
+});
+
+test('a live session shows a Live pill and cannot be hidden', () => {
+  const story = sampleStory();
+  const entries = [libraryEntry(story, { file: 'x.html' })];
+  const html = renderIndexPage(entries, { library: '/lib', live: new Set([story.session.id]) });
+  assert.match(html, /data-live="true"/);
+  assert.match(html, /class="live-pill"/);
+  assert.ok(!html.includes('class="card-hide"'));
+});
+
+test('isLiveEntry matches the session or any session joined into it', () => {
+  const entry = { id: 'b', chain: ['a', 'b'] };
+  assert.equal(isLiveEntry(entry, new Set(['a'])), true);
+  assert.equal(isLiveEntry(entry, new Set(['b'])), true);
+  assert.equal(isLiveEntry(entry, new Set(['c'])), false);
+  assert.equal(isLiveEntry(entry, undefined), false);
+});
+
+test('renderSessionsJs names the library folder when given one', () => {
+  assert.ok(!renderSessionsJs([]).includes('SESSION_STORY_LIBRARY_DIR'));
+  assert.match(renderSessionsJs([], { library: '/proj/.session-stories' }), /SESSION_STORY_LIBRARY_DIR = "\/proj\/\.session-stories";/);
 });

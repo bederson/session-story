@@ -2,8 +2,8 @@
 import { writeFile, readFile, mkdir, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { exec } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { parseTranscript } from '../src/transcript/parse.mjs';
+import { liveSessionIds } from '../src/transcript/live.mjs';
 import { locateSession, locateSubagents, locateChain, defaultClaudeDir, subagentMetaPath } from '../src/transcript/locate.mjs';
 import { buildStory, refreshDerived } from '../src/transcript/claude-code.mjs';
 import { fillBashEditsFromGit } from '../src/ir/git-edits.mjs';
@@ -15,7 +15,7 @@ import { validateStory } from '../src/ir/validate.mjs';
 import { renderPage } from '../src/render/template.mjs';
 import { renderMarkdown, TEMPLATES } from '../src/render/markdown.mjs';
 import {
-  storyFileName, libraryEntry, upsertEntry, renderSessionsJs, renderIndexPage, selectEntries, shellQuote,
+  storyFileName, libraryEntry, upsertEntry, renderSessionsJs, renderIndexPage, selectEntries, isLiveEntry,
   LIBRARY_DIR, MANIFEST_FILE, SESSIONS_FILE, INDEX_FILE,
 } from '../src/render/library.mjs';
 
@@ -298,16 +298,14 @@ async function writeLibrary(story, dir) {
 }
 
 /**
- * The manifest and the two files regenerated from it. The index page gets
- * the command that deletes from this library, spelled with absolute paths
- * so it can be pasted into a terminal from anywhere.
+ * The manifest and the two files regenerated from it. The library folder
+ * keys what a browser hides, and the sessions still running when this is
+ * written show as live, so their cards can't be hidden.
  */
-async function writeLibraryIndex(dir, entries, cwd) {
-  const cli = fileURLToPath(import.meta.url);
-  const deleteCommand = `node ${shellQuote(cli)} delete --library ${shellQuote(dir)}`;
+async function writeLibraryIndex(dir, entries, cwd, live) {
   await writeFile(path.join(dir, MANIFEST_FILE), JSON.stringify({ version: 1, cwd, entries }, null, 2));
-  await writeFile(path.join(dir, SESSIONS_FILE), renderSessionsJs(entries));
-  await writeFile(path.join(dir, INDEX_FILE), renderIndexPage(entries, { cwd, deleteCommand }));
+  await writeFile(path.join(dir, SESSIONS_FILE), renderSessionsJs(entries, { library: dir }));
+  await writeFile(path.join(dir, INDEX_FILE), renderIndexPage(entries, { cwd, library: dir, live: live || await liveSessionIds() }));
 }
 
 async function cmdRender(opts) {
@@ -343,12 +341,17 @@ async function cmdRender(opts) {
 /**
  * Remove sessions from a library: each one's page and its manifest entry,
  * then rewrite the index and switcher without them. Every id must name
- * exactly one session or nothing is removed.
+ * exactly one session or nothing is removed. A session Claude Code is
+ * still running is refused unless --force; --all passes over it.
  */
 async function cmdDelete(opts) {
-  const keys = opts._;
+  // --all and --force take no value, so a word after one is an id it swallowed
+  const keys = [...opts._];
+  for (const flag of ['all', 'force']) {
+    if (typeof opts[flag] === 'string') { keys.push(opts[flag]); opts[flag] = true; }
+  }
   if (!opts.all && !keys.length) {
-    process.stderr.write('usage: story.mjs delete <session-id|id-prefix|file>... [--library <dir>]\n       story.mjs delete --all [--library <dir>]\n');
+    process.stderr.write('usage: story.mjs delete <session-id|id-prefix|file>... [--library <dir>] [--force]\n       story.mjs delete --all [--library <dir>] [--force]\n');
     process.exitCode = 1;
     return;
   }
@@ -366,15 +369,24 @@ async function cmdDelete(opts) {
     return;
   }
 
-  const { removed, kept, unknown, ambiguous } = opts.all
+  const live = await liveSessionIds();
+  const selected = opts.all
     ? { removed: manifest.entries, kept: [], unknown: [], ambiguous: [] }
     : selectEntries(manifest.entries, keys);
-  if (unknown.length || ambiguous.length) {
+  const { unknown, ambiguous } = selected;
+  const running = opts.force === true ? [] : selected.removed.filter((e) => isLiveEntry(e, live));
+  if (unknown.length || ambiguous.length || (running.length && !opts.all)) {
     for (const key of unknown) process.stderr.write(`error: no session matches ${key}\n`);
     for (const key of ambiguous) process.stderr.write(`error: ${key} matches more than one session; use more of its id\n`);
+    for (const e of running) process.stderr.write(`error: ${e.title || e.id} (${e.id}) is still running; pass --force to delete it anyway\n`);
     process.stderr.write('Nothing was deleted.\n');
     process.exitCode = 1;
     return;
+  }
+  const removed = selected.removed.filter((e) => !running.includes(e));
+  const kept = manifest.entries.filter((e) => !removed.includes(e));
+  if (running.length) {
+    process.stderr.write(`Kept ${running.length} running ${running.length === 1 ? 'session' : 'sessions'}: ${running.map((e) => e.title || e.id).join(', ')}\n`);
   }
 
   for (const entry of removed) {
@@ -383,7 +395,7 @@ async function cmdDelete(opts) {
       if (err.code !== 'ENOENT') throw err;
     });
   }
-  await writeLibraryIndex(dir, kept, manifest.cwd || '');
+  await writeLibraryIndex(dir, kept, manifest.cwd || '', live);
   process.stderr.write(
     `Deleted ${removed.length} ${removed.length === 1 ? 'session' : 'sessions'}` +
     (removed.length ? `: ${removed.map((e) => e.title || e.id).join(', ')}` : '') +

@@ -147,7 +147,7 @@ html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border
 .timeline-item.selected .turn-prompt { background: var(--surface-3); }
 .turn-summary { margin: 8px 0 0; color: var(--text-2); font-size: 13px; }
 .turn-panels { min-width: 0; }
-.turn-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
+.turn-panel { scroll-margin-top: 72px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
 .turn-panel + .turn-panel { margin-top: 20px; }
 html.js .turn-panel:not(.active) { display: none; }
 .panel-prompt-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border); }
@@ -177,6 +177,14 @@ html:not(.js) .file-filter { display: none; }
 .edit.file-hidden { display: none; }
 .pick-hint { display: none; align-items: center; gap: 8px; margin: 0; padding: 22px 16px; color: var(--text-3); font-size: 13px; }
 html.js .turn-panel.no-pick .pick-hint { display: flex; }
+/* Floating previous/next step buttons, only while Review is showing. */
+.step-nav { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-2); }
+.step-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--text-2); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.step-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+.step-btn:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.step-btn:disabled { opacity: .35; cursor: default; }
+.step-pos { min-width: 52px; text-align: center; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+html:not(.js) .step-nav { display: none; }
 .story-card .turn-replies { margin: 12px 0 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
 /* ---- edits & hunks ------------------------------------------------------ */
@@ -356,7 +364,7 @@ ${METRICS_CSS}
 @media print {
   :root { --bg: #fff; --surface: #fff; --surface-2: #f6f6f6; --surface-3: #eee; --shadow-1: none; --shadow-2: none; }
   body { font-size: 12px; }
-  .lens-nav, .header-motif, .lens-hint, .show-more { display: none !important; }
+  .lens-nav, .header-motif, .lens-hint, .show-more, .step-nav { display: none !important; }
   .lens-section, .turn-panel, .file-panel { display: block !important; }
   .file-filter { display: none !important; }
   .edit.file-hidden { display: block; }
@@ -557,6 +565,8 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
         });
       }
     }
+    var stepBtn = e.target && e.target.closest ? e.target.closest('.step-btn') : null;
+    if (stepBtn) stepTurn(Number(stepBtn.dataset.step));
     var jump = e.target && e.target.closest ? e.target.closest('[data-jump-turn]') : null;
     if (jump) {
       var turnNum = jump.dataset.jumpTurn;
@@ -593,7 +603,10 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     review: function (lens) {
       // Every time a turn is opened its code starts hidden, until a file or
       // "All changes" is picked.
-      turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) { filterPanelFiles(panel, null); }, lens);
+      turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) {
+        filterPanelFiles(panel, null);
+        updateStepNav(lens, panel.dataset.turnPanel);
+      }, lens);
     },
     diff: function (lens) {
       fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel', renderPending, lens);
@@ -623,6 +636,35 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       Array.prototype.forEach.call(lens.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
     },
   };
+  // The floating step buttons follow whichever turn is open.
+  function updateStepNav(lens, key) {
+    var nav = lens.querySelector('.step-nav');
+    if (!nav || !turns) return;
+    var idx = turns.items.findIndex(function (i) { return i.dataset.turn === key; });
+    nav.querySelector('.step-pos').textContent = (idx + 1) + ' / ' + turns.items.length;
+    nav.querySelector('[data-step="-1"]').disabled = idx <= 0;
+    nav.querySelector('[data-step="1"]').disabled = idx >= turns.items.length - 1;
+  }
+  // Open the turn delta steps away, keep its timeline entry in view, and
+  // bring the panel's top back on screen if the reader had scrolled past it.
+  function stepTurn(delta) {
+    if (!turns) return;
+    var idx = turns.items.findIndex(function (i) { return i.classList.contains('selected'); });
+    var item = turns.items[idx + delta];
+    if (!item) return;
+    turns.select(item.dataset.turn);
+    var timeline = item.parentNode;
+    if (timeline.scrollHeight > timeline.clientHeight) {
+      var top = item.offsetTop - timeline.offsetTop;
+      if (top < timeline.scrollTop || top + item.offsetHeight > timeline.scrollTop + timeline.clientHeight) {
+        timeline.scrollTop = top - (timeline.clientHeight - item.offsetHeight) / 2;
+      }
+    }
+    var panel = document.querySelector('.turn-panel[data-turn-panel="' + item.dataset.turn + '"]');
+    if (panel && panel.getBoundingClientRect().top < 58) {
+      panel.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    }
+  }
   function ensureLens(name) {
     var lens = document.getElementById('lens-' + name);
     if (!lens || lens.hasAttribute('data-ready')) return lens;
@@ -675,9 +717,8 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       return;
     }
     if (!turns || !document.getElementById('lens-review').classList.contains('active')) return;
-    var idx = turns.items.findIndex(function (i) { return i.classList.contains('selected'); });
-    if (e.key === 'j' && idx < turns.items.length - 1) turns.items[idx + 1].click();
-    if (e.key === 'k' && idx > 0) turns.items[idx - 1].click();
+    if (e.key === 'j') stepTurn(1);
+    if (e.key === 'k') stepTurn(-1);
   });
 })();
 `;
@@ -734,7 +775,15 @@ const LIBRARY_SCRIPT = `
   }
   var select = nav.querySelector('.lib-switch');
   var current = nav.dataset.sessionId;
+  // Sessions hidden on the index page stay out of the switcher too.
+  var hidden = {};
+  try {
+    var dir = window.SESSION_STORY_LIBRARY_DIR;
+    var stored = dir ? JSON.parse(localStorage.getItem('session-story-hidden:' + dir) || '[]') : [];
+    if (Array.isArray(stored)) stored.forEach(function (id) { hidden[id] = true; });
+  } catch (e) {}
   sessions.forEach(function (s) {
+    if (hidden[s.id] && s.id !== current) return;
     var option = document.createElement('option');
     option.value = s.file;
     option.textContent = localStamp(s.ended_at || s.started_at) + (s.title || s.id);

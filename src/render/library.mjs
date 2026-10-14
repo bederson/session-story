@@ -92,6 +92,15 @@ function lastActive(entry) {
   return String(entry.ended_at || entry.started_at || '');
 }
 
+/**
+ * Whether a Claude Code process is still running this entry's session, or
+ * any session joined into it: `live` is a set of session ids.
+ */
+export function isLiveEntry(entry, live) {
+  if (!live || !live.size) return false;
+  return [entry.id, ...(entry.chain || [])].some((id) => live.has(id));
+}
+
 /** Add or replace `entry` by session id, most recently active session first. */
 export function upsertEntry(entries, entry) {
   return [...entries.filter((e) => e.id !== entry.id), entry]
@@ -135,9 +144,10 @@ export function shellQuote(text) {
 
 /**
  * The sidecar the story pages load. Only the fields the switcher needs, so
- * the file stays small even after a few hundred sessions.
+ * the file stays small even after a few hundred sessions. `library`, the
+ * folder, lets the switcher leave out what the index page hid.
  */
-export function renderSessionsJs(entries) {
+export function renderSessionsJs(entries, { library = '' } = {}) {
   const slim = entries.map((e) => ({
     file: e.file,
     id: e.id,
@@ -149,7 +159,8 @@ export function renderSessionsJs(entries) {
   }));
   // `</script` inside a string would end the element that loads this file.
   const json = JSON.stringify(slim, null, 2).replace(/<\//g, '<\\/');
-  return `window.SESSION_STORY_LIBRARY = ${json};\n`;
+  const dir = JSON.stringify(String(library)).replace(/<\//g, '<\\/');
+  return `window.SESSION_STORY_LIBRARY = ${json};\n` + (library ? `window.SESSION_STORY_LIBRARY_DIR = ${dir};\n` : '');
 }
 
 const INDEX_STYLE = `
@@ -204,21 +215,27 @@ html:not(.js) .lib-view { display: none; }
 .session-item { position: relative; display: flex; }
 .session-item > .session-card { flex: 1; min-width: 0; }
 .session-item .card-top { padding-right: 30px; }
-.card-delete { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .15s ease, color .15s ease, border-color .15s ease; }
-.session-item:hover .card-delete, .card-delete:focus-visible { opacity: 1; }
-.card-delete:hover { color: var(--del); border-color: var(--border); background: var(--surface); }
-@media (hover: none) { .card-delete { opacity: 1; } }
-.session-list.compact .card-delete { top: 50%; transform: translateY(-50%); }
-.lib-delete-all { font: inherit; padding: 4px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--del); cursor: pointer; margin-left: auto; }
-.lib-delete-all:hover { border-color: var(--del); }
-.lib-cmd { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10; width: min(720px, calc(100vw - 32px)); display: grid; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-2); font-size: 13px; color: var(--text-2); }
-.lib-cmd p { margin: 0; padding-right: 24px; }
-.lib-cmd code { display: block; font-family: var(--mono); font-size: 12px; color: var(--text); background: var(--surface-3); border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; user-select: all; }
-.lib-cmd-actions { display: flex; align-items: center; gap: 10px; }
-.lib-cmd-actions button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
-.lib-cmd-close { position: absolute; top: 8px; right: 8px; display: inline-flex; padding: 4px; border: none; background: none; color: var(--text-3); cursor: pointer; }
+.card-hide { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity .15s ease, color .15s ease, border-color .15s ease; }
+.session-item:hover .card-hide, .card-hide:focus-visible { opacity: 1; }
+.card-hide:hover { color: var(--text); border-color: var(--border); background: var(--surface); }
+@media (hover: none) { .card-hide { opacity: 1; } }
+.session-list.compact .card-hide { top: 50%; transform: translateY(-50%); }
+.card-unhide { display: none; }
+.session-item.is-hidden > .session-card { opacity: .55; border-style: dashed; }
+.session-item.is-hidden .card-hide { display: none; }
+.session-item.is-hidden .card-top { padding-right: 76px; }
+.session-item.is-hidden .card-unhide { position: absolute; top: 10px; right: 10px; display: inline-flex; font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+.session-list.compact .session-item.is-hidden .card-unhide { top: 50%; transform: translateY(-50%); }
+.live-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: var(--accent-soft); color: var(--accent-ink); }
+.live-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.card-pills { display: inline-flex; align-items: center; gap: 6px; }
+.lib-hidden-toggle { font: inherit; padding: 4px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer; margin-left: auto; }
+.lib-hidden-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.lib-undo { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-2); font-size: 13px; color: var(--text-2); }
+.lib-undo span { overflow-wrap: anywhere; }
+.lib-undo button { font: inherit; padding: 3px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
 .lib-count .roll-note { color: var(--text-3); }
-@media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle, .card-delete, .lib-delete-all, .lib-cmd { display: none; } }
+@media print { .lib-tools, .lib-periods, .lib-outcomes, .theme-toggle, .card-hide, .card-unhide, .lib-hidden-toggle, .lib-undo { display: none; } }
 `;
 
 const INDEX_SCRIPT = THEME_TOGGLE_JS + `
@@ -321,19 +338,48 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     if (el) el.hidden = !on;
   }
 
+  // Hidden sessions are this browser's choice, stored per library folder:
+  // every file:// page shares one localStorage, so the key names the folder.
+  var HIDDEN_KEY = list && list.dataset.library ? 'session-story-hidden:' + list.dataset.library : '';
+  var hidden = {};
+  var showHidden = false;
+  if (HIDDEN_KEY) {
+    try {
+      var stored = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]');
+      if (Array.isArray(stored)) stored.forEach(function (id) { hidden[id] = true; });
+    } catch (e) {}
+  }
+  function saveHidden() {
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.keys(hidden))); } catch (e) {}
+  }
+  // A live session is never hidden, even under an id stored before it was resumed.
+  function isHidden(card) { return Boolean(hidden[card.dataset.id]) && card.dataset.live !== 'true'; }
+
   function apply() {
     var q = input ? input.value.trim().toLowerCase() : '';
     var win = windowOf(period);
     var shown = [];
+    var hiddenHits = 0;
     cards.forEach(function (card) {
       var o = card.dataset.outcome || 'unknown';
       var outcomeHit = outcome === 'all' ||
         (outcome === 'failed' ? (o === 'failed' || o === 'blocked') : o === outcome);
       var hit = (!q || card.dataset.search.indexOf(q) !== -1) && inPeriod(card, win) && outcomeHit;
-      card.hidden = !hit;
-      if (hit) shown.push(card);
+      var gone = isHidden(card);
+      card.classList.toggle('is-hidden', gone);
+      card.hidden = !hit || (gone && !showHidden);
+      // A hidden card shown for unhiding doesn't count toward the totals.
+      if (hit && !gone) shown.push(card);
+      if (hit && gone) hiddenHits++;
     });
-    if (empty) empty.hidden = shown.length > 0;
+    if (hiddenBtn) {
+      var hiddenCount = cards.filter(isHidden).length;
+      if (!hiddenCount) showHidden = false;
+      hiddenBtn.hidden = !hiddenCount;
+      hiddenBtn.textContent = 'Hidden (' + hiddenCount + ')';
+      hiddenBtn.setAttribute('aria-pressed', String(showHidden));
+    }
+    if (empty) empty.hidden = shown.length > 0 || (showHidden && hiddenHits > 0);
     if (clearBtn) clearBtn.hidden = !(q || period !== 'all' || outcome !== 'all');
     if (!count) return;
     var sum = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
@@ -417,62 +463,44 @@ const INDEX_SCRIPT = THEME_TOGGLE_JS + `
     if (outcomeBar) Array.prototype.forEach.call(outcomeBar.querySelectorAll('.lib-outcome-btn'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.outcomeFilter === 'all')); });
     apply();
   });
-  // The page is a file, so it cannot delete files itself: each delete button
-  // hands over the CLI command that does, and the index is rewritten by it.
-  var deleteCommand = list ? list.dataset.deleteCommand : '';
-  var cmdBox = document.querySelector('.lib-cmd');
-  function copyText(text, done) {
-    function fallback() {
-      var area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', '');
-      area.style.position = 'fixed'; area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      var ok = false;
-      try { ok = document.execCommand('copy'); } catch (e) {}
-      document.body.removeChild(area);
-      done(ok);
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
-    } else fallback();
+  // The page is a file and can't remove files, so "hide" is what it offers:
+  // the session leaves this list (and the switcher on story pages) in this
+  // browser, and its page stays on disk to come back to.
+  var hiddenBtn = document.querySelector('.lib-hidden-toggle');
+  var undoBox = document.querySelector('.lib-undo');
+  var undoTimer = null;
+  function setHidden(card, on) {
+    if (on) hidden[card.dataset.id] = true;
+    else delete hidden[card.dataset.id];
+    saveHidden();
+    apply();
   }
-  function offerCommand(what, command) {
-    if (!cmdBox) return;
-    cmdBox.querySelector('.lib-cmd-what').textContent = what;
-    cmdBox.querySelector('code').textContent = command;
-    var status = cmdBox.querySelector('.lib-cmd-status');
-    status.textContent = '';
-    cmdBox.hidden = false;
-    copyText(command, function (ok) {
-      status.textContent = ok ? 'Copied to the clipboard.' : 'Select the command above to copy it.';
+  if (HIDDEN_KEY) {
+    cards.forEach(function (card) {
+      var hideBtn = card.querySelector('.card-hide');
+      var unhideBtn = card.querySelector('.card-unhide');
+      if (hideBtn) {
+        hideBtn.hidden = false;
+        hideBtn.addEventListener('click', function () {
+          setHidden(card, true);
+          if (!undoBox) return;
+          undoBox.querySelector('span').textContent = 'Hid \u201c' + hideBtn.dataset.title + '\u201d.';
+          undoBox.hidden = false;
+          undoBox.querySelector('button').onclick = function () {
+            setHidden(card, false);
+            undoBox.hidden = true;
+          };
+          clearTimeout(undoTimer);
+          undoTimer = setTimeout(function () { undoBox.hidden = true; }, 8000);
+        });
+      }
+      if (unhideBtn) unhideBtn.addEventListener('click', function () { setHidden(card, false); });
     });
-  }
-  if (deleteCommand && cmdBox) {
-    Array.prototype.forEach.call(document.querySelectorAll('.card-delete'), function (b) {
-      b.hidden = false;
-      b.addEventListener('click', function () {
-        offerCommand('To delete \u201c' + b.dataset.title + '\u201d, run this in a terminal, then reload this page:',
-          deleteCommand + ' ' + b.dataset.id);
-      });
+    if (hiddenBtn) hiddenBtn.addEventListener('click', function () {
+      showHidden = !showHidden;
+      apply();
     });
-    var allBtn = document.querySelector('.lib-delete-all');
-    if (allBtn) {
-      allBtn.hidden = false;
-      allBtn.addEventListener('click', function () {
-        offerCommand('To delete all ' + plural(cards.length, 'session') + ' in this library, run this in a terminal, then reload this page:',
-          deleteCommand + ' --all');
-      });
-    }
-    cmdBox.querySelector('.lib-cmd-copy').addEventListener('click', function () {
-      var status = cmdBox.querySelector('.lib-cmd-status');
-      copyText(cmdBox.querySelector('code').textContent, function (ok) {
-        status.textContent = ok ? 'Copied to the clipboard.' : 'Select the command above to copy it.';
-      });
-    });
-    cmdBox.querySelector('.lib-cmd-close').addEventListener('click', function () { cmdBox.hidden = true; });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cmdBox.hidden = true; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && undoBox) undoBox.hidden = true; });
   }
   var viewBar = document.querySelector('.lib-view');
   if (viewBar) viewBar.hidden = false;
@@ -533,7 +561,7 @@ function usageOf(entry) {
 
 const dataNum = (v) => (isNum(v) ? String(v) : '');
 
-function sessionCard(entry, deletable) {
+function sessionCard(entry, { live = false, hideable = false } = {}) {
   const totals = entry.totals || {};
   const usage = usageOf(entry);
   const tokens = [
@@ -551,11 +579,14 @@ function sessionCard(entry, deletable) {
     ` data-duration="${dataNum(entry.duration_ms || null)}" data-changed="${(totals.added || 0) + (totals.removed || 0)}"` +
     ` data-added="${totals.added || 0}" data-removed="${totals.removed || 0}"` +
     ` data-input="${dataNum(usage.input_tokens)}" data-output="${dataNum(usage.output_tokens)}"` +
-    ` data-cost="${dataNum(usage.cost_usd)}">` +
+    ` data-cost="${dataNum(usage.cost_usd)}" data-id="${escapeHtml(entry.id)}"${live ? ' data-live="true"' : ''}>` +
     `<a class="session-card" href="${escapeHtml(entry.file)}">` +
     `<span class="card-top">` +
     `<span class="card-date" title="Last active">${icon('clock')}<time datetime="${escapeHtml(lastActive(entry))}">${escapeHtml(formatDate(lastActive(entry)))}</time></span>` +
+    `<span class="card-pills">` +
+    (live ? `<span class="live-pill" title="A Claude Code session is still running this">Live</span>` : '') +
     outcomePill(entry.outcome) +
+    `</span>` +
     `</span>` +
     `<h2>${escapeHtml(entry.title || 'Session story')}</h2>` +
     (entry.summary ? `<p class="card-summary">${escapeHtml(entry.summary)}</p>` : '') +
@@ -570,10 +601,11 @@ function sessionCard(entry, deletable) {
     (chain > 1 ? `<span class="card-chain">${icon('branch')}${chain} joined</span>` : '') +
     `</span>` +
     `</a>` +
-    (deletable
-      ? `<button type="button" class="card-delete" data-id="${escapeHtml(entry.id)}"` +
-        ` data-title="${escapeHtml(entry.title || 'Session story')}" aria-label="Delete this session" title="Delete this session" hidden>` +
-        `${icon('trash')}</button>`
+    // A running session can't be hidden: it is the one you are most likely to look for.
+    (hideable && !live
+      ? `<button type="button" class="card-hide" data-title="${escapeHtml(entry.title || 'Session story')}"` +
+        ` aria-label="Hide this session" title="Hide this session" hidden>${icon('eye-off')}</button>` +
+        `<button type="button" class="card-unhide">Unhide</button>`
       : '') +
     `</div>`
   );
@@ -583,10 +615,11 @@ function sessionCard(entry, deletable) {
  * The gallery: one card per session, newest first, with a client-side
  * filter. Self-contained like the story pages, and links to them by
  * relative path so the whole folder can be moved or zipped as a unit.
- * `deleteCommand` is the shell command, short of its ids, that deletes
- * from this library; without it the page offers no delete actions.
+ * `library` is the library's folder: it keys the sessions this browser
+ * hides, and without it the page offers no hide actions. `live` is the set
+ * of session ids still running, whose cards can't be hidden.
  */
-export function renderIndexPage(entries, { cwd = '', deleteCommand = '' } = {}) {
+export function renderIndexPage(entries, { cwd = '', library = '', live = new Set() } = {}) {
   const project = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : 'Session stories';
   const rollup = { turns: 0, added: 0, removed: 0, input: 0, output: 0, cost: 0 };
   const known = { input: 0, output: 0, cost: 0 };
@@ -628,17 +661,14 @@ export function renderIndexPage(entries, { cwd = '', deleteCommand = '' } = {}) 
       `<span role="group" aria-label="Layout"><button type="button" class="lib-mode" data-mode="cards" aria-pressed="true">Cards</button> ` +
       `<button type="button" class="lib-mode" data-mode="compact" aria-pressed="false">Compact</button></span>` +
       `<button type="button" class="lib-clear" hidden>Clear filters</button>` +
-      (deleteCommand ? `<button type="button" class="lib-delete-all" hidden>Delete all</button>` : '') +
+      (library ? `<button type="button" class="lib-hidden-toggle" aria-pressed="false" hidden></button>` : '') +
       `</div>` +
       count +
-      `<div class="session-list"${deleteCommand ? ` data-delete-command="${escapeHtml(deleteCommand)}"` : ''}>` +
-      `${entries.map((e) => sessionCard(e, Boolean(deleteCommand))).join('')}</div>` +
+      `<div class="session-list"${library ? ` data-library="${escapeHtml(library)}"` : ''}>` +
+      `${entries.map((e) => sessionCard(e, { live: isLiveEntry(e, live), hideable: Boolean(library) })).join('')}</div>` +
       `<p class="no-matches" hidden>No sessions match these filters. Use Clear filters to see all.</p>` +
-      (deleteCommand
-        ? `<div class="lib-cmd" role="status" hidden><p class="lib-cmd-what"></p><code></code>` +
-          `<div class="lib-cmd-actions"><button type="button" class="lib-cmd-copy">Copy</button>` +
-          `<span class="lib-cmd-status"></span></div>` +
-          `<button type="button" class="lib-cmd-close" aria-label="Close">${icon('cross')}</button></div>`
+      (library
+        ? `<div class="lib-undo" role="status" hidden><span></span><button type="button">Undo</button></div>`
         : '')
     : `<p class="lib-empty">No sessions yet. Run <code>story render</code> and this page will list it.</p>`;
 

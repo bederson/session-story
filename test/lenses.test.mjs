@@ -761,3 +761,16 @@ test('turn panels and Story code carry their bodies inert inside a live shell', 
     assert.match(storyHtml, /Show code<\/summary><template data-inert>/);
   }
 });
+
+test('renderReviewLens adds floating previous/next step buttons with a step counter', () => {
+  const turn = (index) => ({ index, id: `u${index}`, at: null, prompt: `Prompt ${index}`, summary: null, edits: [] });
+  const html = renderReviewLens(sampleStory({ turns: [turn(1), turn(2), turn(3)] }));
+  const nav = html.slice(html.indexOf('<nav class="step-nav"'));
+  assert.match(nav, /<button type="button" class="step-btn" data-step="-1" aria-label="Previous step"[^>]*>/);
+  assert.match(nav, /<button type="button" class="step-btn" data-step="1" aria-label="Next step"[^>]*>/);
+  assert.match(nav, /<span class="step-pos"[^>]*>1 \/ 3<\/span>/);
+});
+
+test('renderReviewLens leaves out the step buttons when there is only one turn', () => {
+  assert.doesNotMatch(renderReviewLens(sampleStory()), /step-nav/);
+});

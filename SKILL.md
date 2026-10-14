@@ -114,10 +114,15 @@ session" / "/story".
    page also gets a session switcher in its nav. Re-rendering the same
    session overwrites its file and refreshes its index entry. Pass
    `--library <dir>` for another folder, or `-o <file>` / `--no-library`
-   for a single standalone page with no library around it. To remove
-   sessions from the library, run `node bin/story.mjs delete
-   <session-id>...` (or `--all`). It deletes their pages and rewrites the
-   index; an id prefix of 4 or more characters is enough.
+   for a single standalone page with no library around it. On the index
+   page, each card's hide button takes a session out of the list and the
+   switcher in that browser; the page stays on disk, and "Hidden (N)"
+   brings it back. A session that is still running shows as Live and
+   can't be hidden. Only when the user asks you to delete sessions for
+   real, run `node bin/story.mjs delete <session-id>...` (or `--all`). It
+   deletes their pages and rewrites the index; an id prefix of 4 or more
+   characters is enough. It refuses a running session unless `--force`
+   is passed, and `--all` keeps running sessions.
 
 5. Report both paths — the story page and `.session-stories/index.html` —
    and the header numbers (turns, files, lines added/removed, outcome) to

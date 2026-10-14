@@ -35,9 +35,11 @@ const ICONS = {
   decision: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.2 1.3"/>',
   search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>',
   back: '<path d="M13 8H3"/><path d="M6.5 4.5L3 8l3.5 3.5"/>',
+  prev: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+  next: '<path d="M6 3.5L10.5 8 6 12.5"/>',
   trace: '<path d="M2.5 3.5h3M2.5 8h6M2.5 12.5h4.5"/><circle cx="8" cy="3.5" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="9.5" cy="12.5" r="1.3"/>',
   retry: '<path d="M13 8a5 5 0 1 1-1.5-3.55"/><path d="M13 2.5v3h-3"/>',
-  trash: '<path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4"/><path d="M6.8 6.5v4.5M9.2 6.5v4.5"/>',
+  'eye-off': '<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 2.5l11 11"/>',
   cost: '<circle cx="8" cy="8" r="6"/><path d="M10 5.8c-.4-.6-1.1-.9-2-.9-1.2 0-2 .6-2 1.5 0 2 4 1 4 3.1 0 .9-.9 1.6-2.1 1.6-.9 0-1.7-.4-2.1-1M8 3.6v1.3M8 11.1v1.3"/>',
 };
 

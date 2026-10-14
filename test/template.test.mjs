@@ -243,3 +243,10 @@ test('renderPage carries every lens inert and wires each the first time it is sh
   assert.match(html, /function showLens\(name\) \{\n    ensureLens\(name\);/);
   assert.match(html, /<noscript><p class="no-js-note">This page needs JavaScript to show its views\.<\/p><\/noscript>/);
 });
+
+test('renderPage wires the Review step buttons and hides them in print', () => {
+  const html = renderPage(sampleStory());
+  assert.match(html, /closest\('\.step-btn'\)/);
+  assert.match(html, /\.step-nav\s*\{[^}]*position:\s*fixed/);
+  assert.match(html, /@media print[\s\S]*\.step-nav/);
+});
