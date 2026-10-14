@@ -22,9 +22,9 @@ test('capability: session context is shown (title, cwd, branch, outcome, blind s
   assert.match(markup, /One change was made by a shell command\./);
 });
 
-test('capability: scope and full-file toggles persist through their storage keys', () => {
-  assert.match(html, /session-story-scope/);
-  assert.match(html, /session-story-view/);
+test('capability: the theme persists, the scope and full-file toggles reset on each page', () => {
+  assert.doesNotMatch(html, /session-story-scope/);
+  assert.doesNotMatch(html, /session-story-view/);
   assert.match(html, /session-story-theme/);
 });
 

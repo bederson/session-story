@@ -463,7 +463,7 @@ test('renderHeader shows input tokens incl. cache, output tokens and cost when t
   assert.equal((html.match(/class="stat-tile/g) || []).length, 7);
   assert.match(html, /<span class="stat-value">178\.7k<\/span>\s*<span class="stat-label">input tokens incl\. cache<\/span>/);
   assert.match(html, /<span class="stat-value">860<\/span>\s*<span class="stat-label">output tokens<\/span>/);
-  assert.match(html, /<span class="stat-value">\$4\.22<\/span>\s*<span class="stat-label">cost<\/span>/);
+  assert.match(html, /<span class="stat-value">\$4\.22<\/span>\s*<span class="stat-label">est\. API cost<\/span>/);
 });
 
 test('renderHeader leaves out usage tiles it has no numbers for', () => {
@@ -471,7 +471,7 @@ test('renderHeader leaves out usage tiles it has no numbers for', () => {
     metrics: { usage: { input_tokens: 10, cache_read_tokens: 0, cache_creation_tokens: 0, output_tokens: 5, total_cost_usd: null } },
   }));
   assert.equal((transcriptOnly.match(/class="stat-tile/g) || []).length, 6);
-  assert.doesNotMatch(transcriptOnly, /stat-label">cost</);
+  assert.doesNotMatch(transcriptOnly, /API cost</);
   assert.equal((renderHeader(sampleStory()).match(/class="stat-tile/g) || []).length, 4);
 });
 

@@ -69,14 +69,14 @@ test('renderPage ships an accessible theme toggle, a no-flash theme bootstrap, a
   assert.match(html, /prefers-reduced-motion/);
 });
 
-test('renderPage adds the scope and full-file toggles, restored from storage before first paint', () => {
+test('renderPage adds the scope and full-file toggles, always opening on project files and hunks', () => {
   const html = renderPage(sampleStory());
 
   assert.match(html, /class="opt-toggle" type="button" data-opt="scope" aria-pressed="true"/);
   assert.match(html, /class="opt-toggle" type="button" data-opt="view" aria-pressed="false"/);
-  const head = html.slice(0, html.indexOf('</head>'));
-  assert.match(head, /session-story-scope/);
-  assert.match(head, /session-story-view/);
+  // Not remembered: file:// pages share storage, so a past choice would
+  // override the default on every story.
+  assert.doesNotMatch(html, /session-story-scope|session-story-view/);
   assert.match(html, /html:not\(\.show-outside\) \[data-outside="1"\]/);
   // the full-file view applies to the code-reading lenses; the narrative
   // lens always shows just the changes

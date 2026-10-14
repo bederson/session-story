@@ -103,7 +103,7 @@ function usageTiles(story) {
   return (
     (input ? statTile('sparkle', input, 'input tokens incl. cache') : '') +
     (output ? statTile('sparkle', output, 'output tokens') : '') +
-    (cost ? statTile('cost', cost, 'cost') : '')
+    (cost ? statTile('cost', cost, 'est. API cost') : '')
   );
 }
 export const OUTCOME_LABELS = { completed: 'Completed', partial: 'Partial', failed: 'Failed', blocked: 'Blocked' };

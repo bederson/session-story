@@ -597,7 +597,7 @@ function sessionCard(entry, { live = false, hideable = false } = {}) {
     `<span class="del">${MINUS}${totals.removed || 0}</span>` +
     (entry.duration_ms ? `<span>${icon('clock')}${escapeHtml(formatDuration(entry.duration_ms))}</span>` : '') +
     (tokens ? `<span title="Tokens, input incl. cache">${icon('sparkle')}${tokens}</span>` : '') +
-    (usage.cost_usd !== null ? `<span>${icon('cost')}${formatCost(usage.cost_usd)}</span>` : '') +
+    (usage.cost_usd !== null ? `<span title="Estimated cost at API list prices">${icon('cost')}${formatCost(usage.cost_usd)}</span>` : '') +
     (chain > 1 ? `<span class="card-chain">${icon('branch')}${chain} joined</span>` : '') +
     `</span>` +
     `</a>` +

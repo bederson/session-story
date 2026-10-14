@@ -87,6 +87,26 @@ test('metrics panel groups execution, code, validation, reads and usage, and mar
   assert.match(html, /^<div class="metrics-groups">/);
 });
 
+test('metrics panel labels cost as an API-equivalent estimate and breaks it down per joined session', () => {
+  const sessions = [
+    { session_id: 'b5ca3d8b-0000', cost_usd: 1.49, models: ['claude-opus-5-5'] },
+    { session_id: 'cdb6ec93-0000', cost_usd: 10.12, models: ['claude-fable-5-1', 'claude-haiku-5-5'] },
+    { session_id: '22805d54-0000', cost_usd: null, models: [] },
+  ];
+  const html = renderMetrics({ metrics: metrics({ usage: { ...metrics().usage, sessions } }) });
+  assert.match(html, /\$0\.05<\/span> <span class="metrics-note">API-equivalent estimate<\/span>/);
+  assert.match(html, /<dt>Cost by session<\/dt>/);
+  assert.match(html, /<li><code>b5ca3d8b<\/code> \$1\.49 <span class="metrics-note"><code>opus-5-5<\/code><\/span><\/li>/);
+  assert.match(html, /<code>fable-5-1<\/code>, <code>haiku-5-5<\/code>/);
+  assert.match(html, /<code>22805d54<\/code> <span class="metrics-na">not recorded<\/span> <span class="metrics-note">still running/);
+});
+
+test('metrics panel leaves out Cost by session for a single session or an older story', () => {
+  const one = [{ session_id: 's1', cost_usd: 0.05, models: ['claude-opus-5-5'] }];
+  assert.doesNotMatch(renderMetrics({ metrics: metrics({ usage: { ...metrics().usage, sessions: one } }) }), /Cost by session/);
+  assert.doesNotMatch(renderMetrics({ metrics: metrics() }), /Cost by session/);
+});
+
 test('metrics panel leaves out Usage when nothing carried usage, and is empty without metrics', () => {
   const html = renderMetrics({ metrics: metrics({ usage: { input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, total_cost_usd: null, models: [], source: 'none', complete: false } }) });
   assert.doesNotMatch(html, /<h3>Usage<\/h3>/);

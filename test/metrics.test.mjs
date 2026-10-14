@@ -102,7 +102,7 @@ test('usage prefers cost-state totals and reports the cost', () => {
     model_usage: { 'claude-opus-5-5': { inputTokens: 30, outputTokens: 65, cacheReadInputTokens: 1100, cacheCreationInputTokens: 100, costUSD: 0.05 } },
   }];
   const m = computeMetrics(story({ costStates }));
-  assert.deepEqual(m.usage, { input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, total_cost_usd: 0.05, models: ['claude-opus-5-5'], source: 'cost-state', complete: true });
+  assert.deepEqual(m.usage, { input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, total_cost_usd: 0.05, models: ['claude-opus-5-5'], source: 'cost-state', complete: true, sessions: [] });
 });
 
 test('usage counts only the last of several running-total cost-states from one process', () => {
@@ -125,9 +125,26 @@ test('usage sums the cost-states of different sessions in a chain', () => {
   assert.equal(m.usage.complete, true);
 });
 
+test('usage breaks cost down per session in chain order, null for a session not yet recorded', () => {
+  const state = (id, start, cost, model) => ({
+    session_id: id, start_time: start, total_cost_usd: cost, model_usage: { [model]: { outputTokens: 1 } },
+  });
+  const session = { id: 's3', chain: ['s1', 's2', 's3'], started_at: '2026-10-08T10:00:00.000Z', ended_at: '2026-10-08T10:00:18.500Z' };
+  const costStates = [state('s2', 300, 2, 'claude-opus-5-5'), state('s1', 100, 1, 'claude-fable-5-1'), state('s1', 200, 0.5, 'claude-opus-5-5')];
+  const m = computeMetrics(story({ session, costStates }));
+  assert.deepEqual(m.usage.sessions, [
+    { session_id: 's1', cost_usd: 1.5, models: ['claude-fable-5-1', 'claude-opus-5-5'] },
+    { session_id: 's2', cost_usd: 2, models: ['claude-opus-5-5'] },
+    { session_id: 's3', cost_usd: null, models: [] },
+  ]);
+  assert.equal(m.usage.total_cost_usd, 3.5);
+  assert.equal(m.usage.complete, false);
+});
+
 test('usage sums cost-states that carry no session id, as older stories did', () => {
   const m = computeMetrics(story({ costStates: [{ total_cost_usd: 1, model_usage: {} }, { total_cost_usd: 2, model_usage: {} }] }));
   assert.equal(m.usage.total_cost_usd, 3);
+  assert.deepEqual(m.usage.sessions, []);
 });
 
 test('usage sums turn and subagent usage with a null cost when there is no cost-state', () => {

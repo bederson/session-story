@@ -145,8 +145,29 @@ function latestCostStates(states) {
   return [...latest.values()];
 }
 
-function usageFromCostStates(allStates, links) {
+// One entry per session in the chain, in chain order, with the cost and
+// models of its cost-states (a resumed session can have several processes).
+// A session with no cost-state yet gets a null cost. Empty when a state
+// carries no session id, as in older story JSON, since it cannot be placed.
+function costBySession(states, chain) {
+  if (states.some((s) => !s.session_id)) return [];
+  const ids = [...chain];
+  for (const s of states) if (!ids.includes(s.session_id)) ids.push(s.session_id);
+  return ids.map((id) => {
+    const own = states.filter((s) => s.session_id === id);
+    const models = new Set(own.flatMap((s) => Object.keys(s.model_usage || {})));
+    return {
+      session_id: id,
+      cost_usd: own.length ? own.reduce((n, s) => n + (s.total_cost_usd || 0), 0) : null,
+      models: [...models].sort(),
+    };
+  });
+}
+
+function usageFromCostStates(allStates, chain) {
   const states = latestCostStates(allStates);
+  const links = chain.length || 1;
+  const sessions = costBySession(states, chain);
   const totals = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0 };
   const models = new Set();
   let cost = 0;
@@ -165,15 +186,17 @@ function usageFromCostStates(allStates, links) {
     total_cost_usd: cost,
     models: [...models].sort(),
     source: 'cost-state',
-    complete: states.length === links && states.every((s) => !s.has_unknown_model_cost),
+    complete: (sessions.length ? sessions.every((s) => s.cost_usd !== null) : states.length === links)
+      && states.every((s) => !s.has_unknown_model_cost),
+    sessions,
   };
 }
 
 function usageMetrics(story) {
   const trace = story.trace || {};
   const costStates = Array.isArray(trace.cost_states) ? trace.cost_states : [];
-  const links = (story.session && Array.isArray(story.session.chain) && story.session.chain.length) || 1;
-  if (costStates.length > 0) return usageFromCostStates(costStates, links);
+  const chain = (story.session && Array.isArray(story.session.chain)) ? story.session.chain : [];
+  if (costStates.length > 0) return usageFromCostStates(costStates, chain);
 
   const turnUsage = (story.turns || []).map((t) => t.usage).filter(Boolean);
   const subagents = (Array.isArray(trace.events) ? trace.events : []).filter((e) => e.kind === 'subagent');

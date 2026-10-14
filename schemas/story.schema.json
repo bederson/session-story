@@ -1263,7 +1263,7 @@
                 "number",
                 "null"
               ],
-              "description": "Only from a cost-state record; never computed from model names."
+              "description": "Only from a cost-state record; never computed from model names. Claude Code's estimate at API list prices, not what a subscription bills."
             },
             "models": {
               "type": "array",
@@ -1281,6 +1281,31 @@
             },
             "complete": {
               "type": "boolean"
+            },
+            "sessions": {
+              "type": "array",
+              "description": "Cost per joined session, in chain order, from cost-state records. Empty when there are none or they carry no session id.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "cost_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "null when the session has no cost-state yet, as when it was still running."
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           }
         },

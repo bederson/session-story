@@ -8,19 +8,10 @@ import { renderReportLens } from './report.mjs';
 import { METRICS_CSS } from './metrics-blocks.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
 
-// Runs in <head> before first paint, after the shared theme restore: the
-// two view options are classes on <html>, so restoring them before paint
-// keeps the page from flashing the wrong view.
-const BOOTSTRAP = THEME_BOOTSTRAP + `
-(function () {
-  var root = document.documentElement;
-  try {
-    // Default view: project files only, changed hunks only.
-    if (localStorage.getItem('session-story-scope') === 'all') root.classList.add('show-outside');
-    if (localStorage.getItem('session-story-view') === 'full') root.classList.add('full-context');
-  } catch (e) {}
-})();
-`;
+// Runs in <head> before first paint: the shared theme restore. The two
+// view options are not remembered, so every page opens on project files
+// only, changed hunks only.
+const BOOTSTRAP = THEME_BOOTSTRAP;
 
 const STYLE = `
 ${TOKENS_CSS}
@@ -401,11 +392,13 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
 (function () {
   var root = document.documentElement;
   // The two view options: each maps to a class on <html>, so all the
-  // filtering and view switching is CSS. "Project files only" is the
-  // default, which is the *absence* of the show-outside class.
+  // filtering and view switching is CSS. "Project files only" on and
+  // "Full file" off is the default, the *absence* of both classes; a page
+  // always opens that way, since file:// pages share storage and one
+  // remembered choice would carry into every other story.
   var OPTIONS = {
-    scope: { key: 'session-story-scope', cls: 'show-outside', whenSet: 'all', whenUnset: 'project', pressedWhenSet: false },
-    view: { key: 'session-story-view', cls: 'full-context', whenSet: 'full', whenUnset: 'hunks', pressedWhenSet: true },
+    scope: { cls: 'show-outside', pressedWhenSet: false },
+    view: { cls: 'full-context', pressedWhenSet: true },
   };
   Array.prototype.forEach.call(document.querySelectorAll('.opt-toggle'), function (btn) {
     var opt = OPTIONS[btn.dataset.opt];
@@ -415,8 +408,7 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
       btn.setAttribute('aria-pressed', String(opt.pressedWhenSet ? set : !set));
     }
     btn.addEventListener('click', function () {
-      var set = root.classList.toggle(opt.cls);
-      try { localStorage.setItem(opt.key, set ? opt.whenSet : opt.whenUnset); } catch (e) {}
+      root.classList.toggle(opt.cls);
       sync();
       if (btn.dataset.opt === 'view') renderShown();
     });

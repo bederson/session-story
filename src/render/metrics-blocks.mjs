@@ -42,6 +42,25 @@ function scoped(c, key, format) {
   return isNum(inside) ? dual(format(inside), format(all)) : format(all);
 }
 
+const COST_NOTE = 'API-equivalent estimate';
+const COST_TITLE = "Claude Code's estimate at API list prices. A Pro or Max subscription does not bill this amount.";
+
+function costValue(usd) {
+  const cost = formatCost(usd);
+  if (!cost) return na('Claude Code writes cost when a session ends');
+  return `<span title="${escapeHtml(COST_TITLE)}">${cost}</span> <span class="metrics-note">${COST_NOTE}</span>`;
+}
+
+/** Each joined session's cost, in chain order, so a reader sees where a total came from. */
+function costBySession(sessions) {
+  const items = sessions.map((s) => {
+    const models = s.models.map((m) => `<code>${escapeHtml(m.replace(/^claude-/, ''))}</code>`).join(', ');
+    const cost = formatCost(s.cost_usd) || na('still running when this page was made');
+    return `<li><code>${escapeHtml(s.session_id.slice(0, 8))}</code> ${cost}${models ? ` <span class="metrics-note">${models}</span>` : ''}</li>`;
+  });
+  return `<ul class="metrics-list">${items.join('')}</ul>`;
+}
+
 function row(label, valueHtml) {
   return `<dt>${label}</dt><dd>${valueHtml}</dd>`;
 }
@@ -117,7 +136,8 @@ export function renderMetrics(story) {
       row('Output tokens', formatTokens(u.output_tokens) || na()),
       row('Cache read', formatTokens(u.cache_read_tokens) || na()),
       row('Cache write', formatTokens(u.cache_creation_tokens) || na()),
-      row('Cost', formatCost(u.total_cost_usd) || na('Claude Code writes cost when a session ends')),
+      row('Cost', costValue(u.total_cost_usd)),
+      ...((u.sessions || []).length > 1 ? [row('Cost by session', costBySession(u.sessions))] : []),
       row('Models', (u.models || []).map((model) => `<code>${escapeHtml(model)}</code>`).join(', ') || na()),
       row('Source', USAGE_SOURCE_LABEL[u.source] || escapeHtml(u.source)),
       ...(u.complete ? [] : [row('Complete', 'no, some API calls carried no usage')]),
