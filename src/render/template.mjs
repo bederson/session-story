@@ -5,7 +5,7 @@ import { CLIENT_SOURCE } from './hunk-html.mjs';
 import { inert } from './inert.mjs';
 import { renderStoryData } from './story-data.mjs';
 import { renderReportLens } from './report.mjs';
-import { renderTraceLens, hasTrace, TRACE_CSS, TRACE_SCRIPT } from './trace-lens.mjs';
+import { METRICS_CSS } from './metrics-blocks.mjs';
 import { TOKENS_CSS, BASE_CSS, OUTCOME_CSS, THEME_TOGGLE_CSS, THEME_BOOTSTRAP, THEME_TOGGLE_JS, themeToggleButton } from './theme.mjs';
 
 // Runs in <head> before first paint, after the shared theme restore: the
@@ -351,7 +351,7 @@ ${OUTCOME_CSS}
 }
 
 /* ---- print -------------------------------------------------------------- */
-${TRACE_CSS}
+${METRICS_CSS}
 @media print {
   :root { --bg: #fff; --surface: #fff; --surface-2: #f6f6f6; --surface-3: #eee; --shadow-1: none; --shadow-2: none; }
   body { font-size: 12px; }
@@ -566,13 +566,6 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
   }
 
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Scroll an edit block into view and flash it (the Trace lens's diff links).
-  function revealEdit(target) {
-    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-    target.classList.remove('flash');
-    void target.offsetWidth; // restart the animation when the same edit is revealed twice
-    target.classList.add('flash');
-  }
 
   // Each lens is wired the first time it is shown, after its markup is live.
   var turns = null;
@@ -610,7 +603,6 @@ const SCRIPT = THEME_TOGGLE_JS + CLIENT_SOURCE + `
     story: function (lens) {
       Array.prototype.forEach.call(lens.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
     },
-${TRACE_SCRIPT}
   };
   function ensureLens(name) {
     var lens = document.getElementById('lens-' + name);
@@ -644,6 +636,8 @@ ${TRACE_SCRIPT}
     });
   });
   var initialLens = (location.hash || '#review').slice(1);
+  // The Trace view was folded into Report; old #trace links land there.
+  if (initialLens === 'trace') initialLens = 'report';
   if (!document.getElementById('lens-' + initialLens)) initialLens = 'review';
   showLens(initialLens);
 
@@ -725,8 +719,8 @@ const LIBRARY_SCRIPT = `
 
 /**
  * Assemble the full, self-contained session-story HTML page: header,
- * lens navigation, every lens (Review, Diff, Story, Report, and Trace when
- * the story has a trace), inline CSS and JS.
+ * lens navigation, every lens (Review, Diff, Story and Report), inline CSS
+ * and JS.
  * @param {object} story - the Story IR
  * @param {object} [opts]
  * @param {{indexHref: string, manifestHref: string}} [opts.library] - when the
@@ -760,7 +754,6 @@ export function renderPage(story, opts = {}) {
     libraryNav(story, opts.library) +
     `<div class="tabs" role="tablist" aria-label="Views">` +
     lensTab('review', 'Review', turnCount) + lensTab('diff', 'Diff', fileCount) + lensTab('story', 'Story') + lensTab('report', 'Report') +
-    (hasTrace(story) ? lensTab('trace', 'Trace') : '') +
     `</div>` +
     `<span class="lens-hint">${icon('keyboard')}<kbd>j</kbd><kbd>k</kbd> turns</span>` +
     `<span class="nav-opts">` +
@@ -776,9 +769,6 @@ export function renderPage(story, opts = {}) {
     `<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff">${inert(renderDiffLens(story))}</section>\n` +
     `<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story">${inert(renderStoryLens(story))}</section>\n` +
     `<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report">${inert(renderReportLens(story))}</section>\n` +
-    (hasTrace(story)
-      ? `<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">${inert(renderTraceLens(story))}</section>\n`
-      : '') +
     renderStoryData(storyDataFor(story).data) + `\n` +
     `<script>${SCRIPT}</script>\n` +
     (library ? `<script>${LIBRARY_SCRIPT}</script>\n` : '') +

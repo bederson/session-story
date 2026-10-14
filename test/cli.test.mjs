@@ -332,21 +332,22 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.equal(brief.turns[0].output_tokens, 65);
   assert.deepEqual(brief.turns[0].share, { output: 1, input: 1, duration: 0.973 });
 
-  // non-strict validate accepts the new blocks; render still works and still has four lenses
+  // non-strict validate accepts the new blocks; render still works, with four views and the metrics in Report
   await run('node', [binPath, 'validate', storyJsonPath]);
   const htmlPath = path.join(workdir, 'story.html');
   await run('node', [binPath, 'render', storyJsonPath, '-o', htmlPath]);
   const html = await readFile(htmlPath, 'utf8');
   assert.match(html, /id="lens-report"/);
-  assert.match(html, /id="lens-trace"/);
-  assert.equal((html.match(/class="lens-tab"/g) || []).length, 5);
-  assert.match(html, /data-jump-edit="tu3"/);
+  assert.doesNotMatch(html, /id="lens-trace"/);
+  assert.equal((html.match(/class="lens-tab"/g) || []).length, 4);
+  assert.match(html, /<span>Session metrics<\/span>/);
+  assert.match(html, /<div class="metrics-groups">/);
   assert.match(html, /class="turn-usage"/);
   assert.match(html, /65 out/);
   assert.match(html, /1\.2k in/);
   assert.match(html, /\(89% cache\)/);
   // one turn: nothing to rank
-  assert.doesNotMatch(html, /class="trace-where"/);
+  assert.doesNotMatch(html, /class="where-went"/);
 });
 
 test('extract --latest -o <file> writes to the given file (a boolean flag must not eat -o)', async () => {

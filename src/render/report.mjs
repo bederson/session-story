@@ -1,15 +1,17 @@
 /**
  * Report lens: the story of the session itself, not just its diffs -
- * intent, commands, tests, errors, decisions, dependencies, git state, and
- * outcome. Everything here is either read straight off `turns[].bash` /
- * `turns[].errors` (deterministic) or off `report.*` (Claude's judgement,
- * seeded by the `--brief` hints - see SKILL.md).
+ * intent, commands, tests, errors, decisions, dependencies, git state,
+ * outcome, and the session metrics (where the tokens and time went).
+ * Everything here is either read straight off `turns[].bash` /
+ * `turns[].errors` / `metrics` (deterministic) or off `report.*` (Claude's
+ * judgement, seeded by the `--brief` hints - see SKILL.md).
  */
 
 import { escapeHtml } from './diff.mjs';
 import { icon } from './icons.mjs';
 import { inert } from './inert.mjs';
 import { plural, OUTCOME_LABELS } from './lenses.mjs';
+import { renderScorecard, renderWhereItWent, renderMetrics } from './metrics-blocks.mjs';
 import { allCommands, allErrors, validationRuns, shortSha, VALIDATION_CATEGORIES } from '../ir/selectors.mjs';
 
 /**
@@ -214,6 +216,18 @@ function renderGit(report) {
   return section('commit', 'Git state', `${branch}${range}${commitsHtml}${statusLine}`);
 }
 
+/** Scorecard and "Where it went"; left out when the story has neither. */
+function renderSessionMetrics(story) {
+  const body = renderScorecard(story.metrics) + renderWhereItWent(story);
+  return body ? section('sparkle', 'Session metrics', body) : '';
+}
+
+/** The metrics groups; left out for a story extracted before metrics existed. */
+function renderMetricsSection(story) {
+  const body = renderMetrics(story);
+  return body ? section('trace', 'Metrics', body) : '';
+}
+
 /**
  * @param {object} story - Story IR
  * @returns {string}
@@ -224,6 +238,7 @@ export function renderReportLens(story) {
   return (
     `<div class="report-lens">` +
     renderOutcome(report, story) +
+    renderSessionMetrics(story) +
     renderPlan(report, turns) +
     renderDecisions(report) +
     renderCommands(turns) +
@@ -231,6 +246,7 @@ export function renderReportLens(story) {
     renderErrors(turns) +
     renderDependencies(report) +
     renderGit(report) +
+    renderMetricsSection(story) +
     `</div>`
   );
 }

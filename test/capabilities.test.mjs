@@ -9,9 +9,10 @@ import { richStory, longStory } from './fixtures/story-fixture.mjs';
 const html = renderPage(richStory(), { library: { indexHref: 'index.html', manifestHref: 'sessions.js' } });
 const markup = html.replace(/<script[^>]*>[^]*?<\/script>/g, '');
 
-test('capability: five views and their tabs exist, Trace only with trace data', () => {
-  for (const v of ['review', 'diff', 'story', 'report', 'trace']) assert.match(html, new RegExp(`id="lens-${v}"`));
-  assert.doesNotMatch(renderPage(Object.assign(richStory(), { trace: undefined })), /id="lens-trace"/);
+test('capability: four views and their tabs exist', () => {
+  for (const v of ['review', 'diff', 'story', 'report']) assert.match(html, new RegExp(`id="lens-${v}"`));
+  assert.equal((html.match(/class="lens-tab"/g) || []).length, 4);
+  assert.doesNotMatch(html, /id="lens-trace"/);
 });
 
 test('capability: session context is shown (title, cwd, branch, outcome, blind spots)', () => {
@@ -58,10 +59,13 @@ test('capability: Report shows validation, errors with resolution, and long comm
   assert.match(markup, /more characters/);
 });
 
-test('capability: Trace has filters, failures-only and jumps into Review', () => {
-  assert.match(html, /data-trace-filter="error"/);
-  assert.match(html, /class="trace-failures"/);
-  assert.match(html, /class="trace-jump"/);
+test('capability: Report carries the session metrics, and Where it went jumps into Review', () => {
+  assert.match(markup, /<span>Session metrics<\/span>/);
+  assert.match(markup, /<div class="metrics-groups">/);
+  assert.match(html, /closest\('\[data-jump-turn\]'\)/);
+  const story = richStory();
+  story.metrics.turns = story.turns.map((t, i) => ({ index: t.index, duration_ms: 1000 * (i + 1), duration_source: 'transcript', output_tokens: 100 * (i + 1) }));
+  assert.match(renderPage(story), /class="metrics-jump" data-jump-turn="\d+"/);
 });
 
 test('capability: keyboard shortcuts j/k and bracket view switching are wired', () => {

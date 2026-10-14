@@ -26,7 +26,7 @@ test('renderPage stamps the page with the time it was rendered, or the time it i
   assert.match(renderPage(sampleStory(), { generatedAt: '2026-10-14T09:12:33.000Z' }), /datetime="2026-10-14T09:12:33.000Z"/);
 });
 
-test('renderPage produces a full HTML document with a title and all three lens sections', () => {
+test('renderPage produces a full HTML document with a title and all four lens sections', () => {
   const html = renderPage(sampleStory());
 
   assert.match(html, /<!doctype html>/i);
@@ -156,20 +156,20 @@ test('renderPage library chrome tells the page which session it is', () => {
   assert.match(html, /data-session-id="s1"/);
 });
 
-test('a story with a trace gets a fifth Trace tab and section after Report', () => {
+test('a story with a trace gets no extra tab: its metrics are in Report', () => {
   const story = Object.assign(sampleStory(), {
     trace: { events: [{ id: 'u1', kind: 'prompt', turn: 1, status: 'ok', summary: 'x', started_at: null, ended_at: null, duration_ms: null, source: 'transcript' }], cost_states: [] },
     metrics: { execution: { turns: 1 }, code: {}, validation: { final_state: 'none' }, reads: {}, usage: { source: 'none' } },
   });
   const html = renderPage(story);
-  assert.match(html, /id="tab-report"[\s\S]*id="tab-trace"/);
-  assert.match(html, /<section class="lens-section" id="lens-trace" role="tabpanel" aria-labelledby="tab-trace">/);
+  assert.equal((html.match(/class="lens-tab"/g) || []).length, 4);
+  assert.doesNotMatch(html, /tab-trace|id="lens-trace"/);
+  assert.match(html, /<div class="metrics-groups">/);
 });
 
-test('a story without a trace (older story.json) gets no Trace tab', () => {
+test('an old #trace link opens the Report view', () => {
   const html = renderPage(sampleStory());
-  assert.doesNotMatch(html, /tab-trace|id="lens-trace"/);
-  assert.match(html, /id="lens-report"/);
+  assert.match(html, /if \(initialLens === 'trace'\) initialLens = 'report';/);
 });
 
 test('the page references nothing over the network', () => {
@@ -178,14 +178,10 @@ test('the page references nothing over the network', () => {
   assert.doesNotMatch(html, /@import|url\(http/);
 });
 
-test('the page script wires trace filters, failures-only and jumps to a Review edit', () => {
+test('the page script carries no Trace view wiring', () => {
   const html = renderPage(Object.assign(sampleStory(), { trace: { events: [] } }));
   const script = html.slice(html.lastIndexOf('<script>'));
-  assert.match(script, /trace: function \(traceLens\)/);
-  assert.match(script, /setAttribute\('data-filter'/);
-  assert.match(script, /classList\.toggle\('failures-only'\)/);
-  assert.match(script, /dataset\.editId === editId/);
-  assert.match(script, /function revealEdit\(target\)/);
+  assert.doesNotMatch(script, /traceLens|failures-only|revealEdit/);
 });
 
 function storyWithCode() {
@@ -239,7 +235,7 @@ test('renderPage renders code on demand: on pick, file open, Story toggle, Full 
 
 test('renderPage carries every lens inert and wires each the first time it is shown', () => {
   const html = renderPage(Object.assign(storyWithCode(), { trace: { events: [] } }));
-  for (const lens of ['review', 'diff', 'story', 'report', 'trace']) {
+  for (const lens of ['review', 'diff', 'story', 'report']) {
     assert.match(html, new RegExp(`id="lens-${lens}" role="tabpanel" aria-labelledby="tab-${lens}"><template data-inert>`));
   }
   assert.match(html, /function activate\(el\)/);

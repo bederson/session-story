@@ -88,10 +88,9 @@ before. Pass `--library <dir>` to put the library elsewhere, or `-o <file>`
 | **Review** | Reviewing your own session       | A timeline of turns — prompt, one-sentence intent, number of files changed — with the turn's prompt and Claude's text output in its panel, and its code behind an “All changes” / per-file picker. Each turn shows how long it took and the tokens it used, with a bar for its share of the session's output |
 | **Diff**   | A teammate doing code review     | A GitHub-style file tree and diff, each hunk tagged with the turn that produced it            |
 | **Story**  | A stakeholder who wants the gist | A narrative card per turn with Claude's text output, code collapsed by default |
-| **Report** | Anyone who wants what happened, not just what changed | Plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state, and outcome |
-| **Trace**  | Agent and tool developers | Execution timeline of prompts, tool calls and subagents with status and latency; a “Where it went” ranking of the turns that used the most output tokens and time; filters; deterministic metrics, token usage, and cost when Claude Code recorded it |
+| **Report** | Anyone who wants what happened, not just what changed | Outcome; session metrics (tool calls, failures, validation, retries) and a “Where it went” ranking of the turns that used the most output tokens and time; plan/intent, commands run, tests & validation, errors and how they were resolved, decisions, dependencies, git state; and deterministic metrics, token usage, and cost when Claude Code recorded it |
 
-The Trace tab appears for stories extracted by this version; an older `story.json` renders without it.
+The metrics sections appear for stories extracted with trace data; an older `story.json` renders the Report without them.
 
 The session library offers sorting, a compact layout, a "Not recorded" outcome filter and Clear filters.
 
@@ -103,9 +102,9 @@ Two toggles in the nav apply across the views, and persist across visits:
 ## Why Session Story
 
 - **Reconstructs intent, not just diffs** — links every edit back to the prompt that caused it, in the order it happened.
-- **Five views, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened", Trace for whoever builds or debugs the agent; no server needed to view any of them.
+- **Four views, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened, and where did the time and tokens go"; no server needed to view any of them.
 - **Zero runtime dependencies** — pure Node.js, inline CSS/JS, works over `file://`.
-- **Stays light on long sessions** — each distinct diff is carried once as data and rendered when you open it, and every view, turn and trace row you have not opened yet is carried inert, so a long session opens with a few thousand live elements instead of tens of thousands. The page needs JavaScript; printing renders everything.
+- **Stays light on long sessions** — each distinct diff is carried once as data and rendered when you open it, and every view and turn you have not opened yet is carried inert, so a long session opens with a few thousand live elements instead of tens of thousands. The page needs JavaScript; printing renders everything.
 - **Typed IR, validated before render** — `story.json` follows [`schemas/story.schema.json`](schemas/story.schema.json); `validate` checks its shape and, in `--strict` mode, that every turn and the session have a summary.
 - **Honest about blind spots** — a tool call whose result never arrived is shown as "edit attempted, result unknown" instead of causing an error, and untracked shell edits are disclosed in the page header rather than silently dropped.
 
@@ -113,7 +112,7 @@ Two toggles in the nav apply across the views, and persist across visits:
 
 | Step          | What happens                                                                                                                                             |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Extract**   | Locates the session transcript (and any subagent transcripts) under `~/.claude/projects/<slug>/`, parses it, and builds a typed IR (`story.json`) — including commands run, errors, git branch/commits, and dependency changes, all pulled straight from the transcript and git. It also records a chronological trace of every prompt, tool call and subagent with status and latency, per-turn durations, token usage (and cost, when Claude Code has written it), and deterministic metrics: the data behind the upcoming Trace view. Anything the transcript did not record stays `null`, never 0. |
+| **Extract**   | Locates the session transcript (and any subagent transcripts) under `~/.claude/projects/<slug>/`, parses it, and builds a typed IR (`story.json`) — including commands run, errors, git branch/commits, and dependency changes, all pulled straight from the transcript and git. It also records a chronological trace of every prompt, tool call and subagent with status and latency, per-turn durations, token usage (and cost, when Claude Code has written it), and deterministic metrics: the data behind the Report view's metrics sections. Anything the transcript did not record stays `null`, never 0. |
 | **Summarize** | Claude fills in the session summary, one-sentence turn intents, and the report narrative (plan, decisions, outcome), read from the `--brief` projection only — never the full transcript. |
 | **Validate**  | Checks the IR's shape and, in `--strict` mode, that every turn, the session, and the report have their required fields filled in.                        |
 | **Render**    | Compiles the IR into one self-contained HTML file with inline CSS and JS — no external requests, no template step left undone.                           |
@@ -150,7 +149,7 @@ Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG
 npm test
 ```
 
-338 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
+380 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
 
 ## License
 

@@ -103,8 +103,8 @@ session" / "/story".
    for you), Diff
    (file tree, GitHub-style, for a teammate), Story (narrative cards with Claude's
    output, for a stakeholder), Report (plan, commands, tests, errors, decisions,
-   dependencies, git state, and outcome), and Trace (execution timeline,
-   metrics and usage, for agent developers) — and opens it.
+   dependencies, git state, outcome, and the session metrics with token
+   usage) — and opens it.
 
    The page lands in the project's `.session-stories/` library as
    `<date>-<session-id>-<slug>.html`, so each session keeps its own file
@@ -119,7 +119,7 @@ session" / "/story".
 5. Report both paths — the story page and `.session-stories/index.html` —
    and the header numbers (turns, files, lines added/removed, outcome) to
    the user. If the story has token usage, report output tokens, the cost
-   when recorded, and which turn used the most output tokens (the Trace
+   when recorded, and which turn used the most output tokens (the Report
    tab's "Where it went" ranks them).
 
 6. **Optional: markdown.** If the user asks for a PR description or a

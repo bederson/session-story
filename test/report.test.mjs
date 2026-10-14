@@ -165,7 +165,7 @@ test('a failed test run shows its output once, under Tests & validation, and its
   const html = renderReportLens(story);
 
   assert.equal(html.split('Expected 2 to equal 3').length - 1, 1);
-  assert.ok(html.indexOf('Expected 2 to equal 3') > html.indexOf('Tests &amp; validation'));
+  assert.ok(html.indexOf('Expected 2 to equal 3') > html.indexOf('Tests & validation'));
   assert.match(html, /output under Tests &amp; validation/);
   // Output of a failed command that is not a validation run stays with it.
   assert.equal(html.split('Could not resolve host').length - 1, 1);
@@ -205,4 +205,43 @@ test('a long command list shows the first rows and carries the rest inert behind
 test('a short command list has no "Show all"', () => {
   const html = renderReportLens(sampleStory());
   assert.doesNotMatch(html, /show-more|cmd-rest/);
+});
+
+function withMetrics(story) {
+  const pt = (index, output, duration_ms) => ({
+    index, duration_ms, duration_source: 'transcript',
+    input_tokens: 1, output_tokens: output, cache_read_tokens: 0, cache_creation_tokens: 0,
+    api_calls: 1, complete: true, subagents: null, share: { output: null, input: null, duration: null },
+  });
+  story.turns.push({ index: 2, id: 'u2', prompt: 'Write a README', summary: 'Wrote the README.', edits: [], bash: [], errors: [], plan: null });
+  story.metrics = {
+    execution: { duration_ms: 330000, turns: 2, tool_calls: 9, failed_tool_calls: 1, rejected_tool_calls: 0, commands: 2, failed_commands: 1, retries: 1 },
+    code: { files_changed: 1, lines_added: 3, lines_removed: 0, edits: 1, files_edited_repeatedly: [] },
+    validation: { commands: 1, passed: 1, failed: 0, final_state: 'passed', last_command: 'npm test' },
+    reads: { files_read: 2, tool_calls: 3 },
+    usage: { input_tokens: 10, output_tokens: 3000, cache_read_tokens: 0, cache_creation_tokens: 0, total_cost_usd: 0.2, models: ['claude-opus-5-5'], source: 'cost-state', complete: true },
+    turns: [pt(1, 1000, 60000), pt(2, 2000, 120000)],
+  };
+  return story;
+}
+
+const headings = (html) => [...html.matchAll(/<h2>[^]*?<span>([^<]+)<\/span><\/h2>/g)].map((m) => m[1]);
+
+test('a story with metrics carries the session metrics after the outcome and the metrics groups at the end', () => {
+  const html = renderReportLens(withMetrics(sampleStory()));
+  assert.deepEqual(headings(html), [
+    'Outcome & summary', 'Session metrics', 'Plan / intent', 'Decisions', 'Commands executed',
+    'Tests & validation', 'Errors encountered', 'Dependencies', 'Git state', 'Metrics',
+  ]);
+  assert.match(html, /9<\/span> <span class="stat-label">tool calls/);
+  assert.match(html, /Where it went/);
+  assert.match(html, /class="metrics-jump" data-jump-turn="2"/);
+  for (const h of ['Execution', 'Code', 'Validation', 'Reads', 'Usage']) assert.match(html, new RegExp(`<h3>${h}</h3>`));
+  assert.doesNotMatch(html, /<table class="hunk">/);
+});
+
+test('a story without metrics renders the eight report sections and nothing more', () => {
+  const html = renderReportLens(sampleStory());
+  assert.equal(headings(html).length, 8);
+  assert.doesNotMatch(html, /Session metrics|Where it went|metrics-groups/);
 });
