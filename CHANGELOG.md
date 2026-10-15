@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Install docs: the Node.js 22.20+ installer requirement is stated up front, with a command for older Node that fetches Node 22 for the install only.
 
