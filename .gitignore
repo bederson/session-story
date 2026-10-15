@@ -1,5 +1,5 @@
 node_modules/
 .session-stories/
 .DS_Store
-examples/
+_site/
 docs/superpowers/

@@ -1,14 +1,24 @@
 {
   "name": "metafyl",
   "version": "0.1.0",
-  "description": "Shareable, self-contained HTML review artifact for a Claude Code session: prompts linked to the edits they caused.",
+  "private": true,
+  "description": "Session Story: an agent skill that turns a Claude Code session into one shareable, self-contained HTML review page.",
   "type": "module",
   "license": "MIT",
-  "bin": {
-    "story": "bin/story.mjs"
+  "author": "Nenad Alajbegovic",
+  "homepage": "https://nalaj.github.io/metafyl/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nalaj/metafyl.git"
   },
+  "bugs": {
+    "url": "https://github.com/nalaj/metafyl/issues"
+  },
+  "keywords": ["claude-code", "agent-skill", "skills", "session-replay", "code-review"],
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test",
+    "smoke": "node scripts/package-smoke.mjs",
+    "build:site": "node scripts/build-site.mjs"
   },
   "engines": {
     "node": ">=18.18"

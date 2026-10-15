@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Due dates for todos</title>
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add('js');
+  try {
+    var saved = localStorage.getItem('session-story-theme');
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+})();
+</script>
+<style>
+
+:root {
+  color-scheme: light dark;
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef0f4;
+  --border: #e1e4ea;
+  --border-strong: #c9ced8;
+  --text: #15181e;
+  --text-2: #586170;
+  --text-3: #737b89;
+  --accent: #4c6ef5;
+  --accent-ink: #3b5bdb;
+  --accent-soft: rgba(76,110,245,.10);
+  --accent-ring: rgba(76,110,245,.35);
+  --add: #1a7a42;
+  --add-bg: #e6f6ec;
+  --add-line: rgba(31,138,76,.10);
+  --del: #c9363f;
+  --del-bg: #fbe9eb;
+  --del-line: rgba(201,54,63,.09);
+  --shadow-1: 0 1px 2px rgba(20,24,32,.06), 0 1px 0 rgba(20,24,32,.03);
+  --shadow-2: 0 10px 28px -14px rgba(20,24,32,.22), 0 2px 6px -2px rgba(20,24,32,.08);
+  --motif: .8;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --font: "Avenir Next", "IBM Plex Sans", "Source Sans 3", "Segoe UI Variable Text", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --bg: #0e1014;
+  --surface: #151820;
+  --surface-2: #1a1e27;
+  --surface-3: #21262f;
+  --border: #262c37;
+  --border-strong: #3a4250;
+  --text: #e7e9ee;
+  --text-2: #a3abb8;
+  --text-3: #808896;
+  --accent: #7b93ff;
+  --accent-ink: #9fb0ff;
+  --accent-soft: rgba(123,147,255,.14);
+  --accent-ring: rgba(123,147,255,.45);
+  --add: #4cc27a;
+  --add-bg: #13291c;
+  --add-line: rgba(76,194,122,.11);
+  --del: #f07178;
+  --del-bg: #2d171a;
+  --del-line: rgba(240,113,120,.11);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.45);
+  --shadow-2: 0 14px 34px -16px rgba(0,0,0,.7), 0 2px 6px -2px rgba(0,0,0,.5);
+  --motif: .5;
+}
+}
+:root[data-theme="dark"] {
+  --bg: #0e1014;
+  --surface: #151820;
+  --surface-2: #1a1e27;
+  --surface-3: #21262f;
+  --border: #262c37;
+  --border-strong: #3a4250;
+  --text: #e7e9ee;
+  --text-2: #a3abb8;
+  --text-3: #808896;
+  --accent: #7b93ff;
+  --accent-ink: #9fb0ff;
+  --accent-soft: rgba(123,147,255,.14);
+  --accent-ring: rgba(123,147,255,.45);
+  --add: #4cc27a;
+  --add-bg: #13291c;
+  --add-line: rgba(76,194,122,.11);
+  --del: #f07178;
+  --del-bg: #2d171a;
+  --del-line: rgba(240,113,120,.11);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.45);
+  --shadow-2: 0 14px 34px -16px rgba(0,0,0,.7), 0 2px 6px -2px rgba(0,0,0,.5);
+  --motif: .5;
+}
+
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.icon { width: 16px; height: 16px; flex-shrink: 0; vertical-align: -3px; }
+
+
+/* ---- header ------------------------------------------------------------ */
+.story-header { position: relative; overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--border); }
+.header-motif { position: absolute; top: -20px; right: 0; height: calc(100% + 40px); width: min(640px, 70%); color: var(--accent); opacity: calc(.18 * var(--motif)); pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 45%); mask-image: linear-gradient(90deg, transparent, #000 45%); }
+.header-inner { position: relative; max-width: 1240px; margin: 0 auto; padding: 24px var(--gutter) 20px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 8px; }
+.story-header h1 { margin: 0 0 10px; font-size: clamp(20px, 2.4vw, 28px); line-height: 1.2; letter-spacing: -.02em; font-weight: 700; max-width: 40ch; }
+.story-header .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; color: var(--text-2); font-size: 12px; margin-bottom: 14px; }
+.story-header .meta > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; }
+.story-header .meta .cwd span { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.story-header .meta .commits code { font-family: var(--mono); font-size: 11px; background: var(--surface-3); border-radius: 4px; padding: 1px 5px; }
+.eyebrow .outcome-pill { margin-left: 2px; padding: 2px 10px; font-size: 10px; }
+.story-header .summary { margin: 0 0 16px; max-width: 80ch; font-size: 14px; line-height: 1.55; color: var(--text); padding: 10px 14px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.totals { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-width: 1180px; }
+.stat-tile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); min-width: 0; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.stat-tile:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.stat-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); flex-shrink: 0; }
+.stat-tile.added .stat-icon { background: var(--add-bg); color: var(--add); }
+.stat-tile.removed .stat-icon { background: var(--del-bg); color: var(--del); }
+.stat-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.stat-value { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.stat-label { font-size: 11.5px; color: var(--text-2); }
+.session-strip-wrap { max-width: 760px; margin-top: 14px; padding: 8px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.session-strip { display: flex; gap: 2px; height: 8px; }
+.strip-seg { display: flex; gap: 2px; min-width: 6px; height: 100%; border-radius: 3px; overflow: hidden; background: var(--surface-3); }
+.strip-seg.empty { flex-grow: 0 !important; width: 8px; border: 1px dashed var(--border-strong); background: transparent; }
+.strip-caption { display: flex; justify-content: space-between; margin-top: 5px; font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
+.blind-spots { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-2); }
+.blind-spots li { display: flex; gap: 8px; align-items: flex-start; }
+.blind-spots .icon { color: var(--text-3); margin-top: 1px; }
+
+/* ---- activity bars (shared) -------------------------------------------- */
+.turn-bars { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.bar-track { flex: 1; display: flex; gap: 2px; height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
+.bar-add { display: block; height: 100%; background: var(--add); border-radius: 0 3px 3px 0; }
+.bar-del { display: block; height: 100%; background: var(--del); border-radius: 0 3px 3px 0; }
+.bar-label, .edit-stats { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-3); white-space: nowrap; }
+.edit-stats { display: inline-flex; gap: 8px; margin-left: auto; }
+.edit-stats .add { color: var(--add); }
+.edit-stats .del { color: var(--del); }
+.turn-usage { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 8px 0 0; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.tu-sub { color: var(--text-2); }
+.tu-partial { font-style: italic; }
+.share-track { flex-basis: 100%; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.share-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.turn-panel > .turn-usage { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+
+/* ---- lens nav ----------------------------------------------------------- */
+.lens-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 8px var(--gutter); background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: saturate(1.5) blur(12px); -webkit-backdrop-filter: saturate(1.5) blur(12px); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.03); }
+.lens-nav .tabs { display: inline-flex; gap: 3px; padding: 3px; background: var(--surface-3); border: 1px solid var(--border); border-radius: 10px; }
+.lens-tab { display: inline-flex; align-items: center; gap: 7px; background: none; border: none; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 550; padding: 5px 12px; border-radius: 7px; cursor: pointer; transition: all .15s ease; }
+.lens-tab:hover { color: var(--text); }
+.lens-tab[aria-selected="true"] { background: var(--surface); color: var(--accent-ink); box-shadow: var(--shadow-1); font-weight: 650; }
+.tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 17px; padding: 0 5px; font-size: 10.5px; font-weight: 700; border-radius: 999px; background: var(--surface-2); color: var(--text-3); font-family: var(--mono); border: 1px solid var(--border); transition: all .15s ease; }
+.lens-tab[aria-selected="true"] .tab-badge { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-ring); }
+.lens-nav { flex-wrap: wrap; }
+.lens-hint { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 11.5px; padding: 3px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
+.lib-nav { display: inline-flex; align-items: center; gap: 8px; }
+.lib-nav[hidden] { display: none; }
+.lib-back { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-2); font-size: 12px; text-decoration: none; }
+.lib-back:hover { color: var(--text); border-color: var(--border-strong); }
+.lib-switch { max-width: min(320px, 40vw); padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.lib-switch:hover { color: var(--text); border-color: var(--border-strong); }
+.lens-hint kbd { font-family: var(--mono); font-size: 10.5px; padding: 1px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); }
+
+.theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text-2); cursor: pointer; transition: color .15s ease, border-color .15s ease; }
+.theme-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+.theme-toggle .icon { display: none; }
+:root:not([data-theme]) .theme-toggle .icon-auto { display: block; }
+:root[data-theme="light"] .theme-toggle .icon-sun { display: block; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: block; }
+
+
+/* ---- scope filter & full-file view ------------------------------------- */
+.v-all { display: none; }
+html.show-outside .v-in { display: none; }
+html.show-outside .v-all { display: inline; }
+html:not(.show-outside) [data-outside="1"] { display: none !important; }
+html.show-outside .only-when-filtered { display: none; }
+.session-strip[data-scope="all"], .bar-track[data-scope="all"] { display: none; }
+html.show-outside .session-strip[data-scope="all"], html.show-outside .bar-track[data-scope="all"] { display: flex; }
+html.show-outside .session-strip[data-scope="in"], html.show-outside .bar-track[data-scope="in"] { display: none; }
+.view-full { display: none; }
+/* Code views are rendered by the page script; say so when it cannot run. */
+html:not(.js) .view-hunks[data-diff]::before { content: "This diff needs JavaScript to show."; display: block; padding: 12px 16px; color: var(--text-3); font-size: 12.5px; font-style: italic; }
+.no-js-note { max-width: 1240px; margin: 12px auto 0; padding: 0 var(--gutter); color: var(--text-2); font-size: 13px; }
+html.full-context #lens-review .view-full, html.full-context #lens-diff .view-full { display: block; }
+html.full-context #lens-review .view-hunks, html.full-context #lens-diff .view-hunks { display: none; }
+/* #lens-story always shows just the changes, so the toggle never empties a card. */
+.approx-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
+.approx-note .icon { color: var(--text-3); margin-top: 1px; }
+.outside-note { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 0; max-width: 72ch; font-size: 12.5px; color: var(--text-2); }
+.outside-note .icon { color: var(--accent-ink); margin-top: 1px; }
+.opt-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+.opt-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+.opt-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.opt-toggle .icon { width: 14px; height: 14px; }
+.nav-opts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* ---- lens sections & panels -------------------------------------------- */
+.lens-section { max-width: 1240px; margin: 0 auto; padding: 28px var(--gutter) 56px; }
+.lens-intro { margin: -8px 0 18px; color: var(--text-2); font-size: 13.5px; }
+html.js .lens-section:not(.active) { display: none; }
+html:not(.js) .lens-section + .lens-section { border-top: 1px solid var(--border); }
+.panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
+.turn-time { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
+.panel-head .turn-time { display: inline; margin: 0; }
+.panel-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.panel-title .icon { color: var(--accent-ink); }
+.panel-meta { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; font-size: 12px; color: var(--text-3); }
+.panel-meta .edit-stats { margin-left: 0; }
+.churn-note { color: var(--accent-ink); }
+.no-edits { display: flex; align-items: center; gap: 8px; margin: 0; padding: 28px 16px; color: var(--text-3); font-style: italic; }
+
+/* ---- review lens -------------------------------------------------------- */
+.review-lens { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.timeline { position: sticky; top: 58px; max-height: calc(100vh - 78px); overflow-y: auto; list-style: none; margin: 0; padding: 4px 6px 4px 0; display: flex; flex-direction: column; gap: 10px; }
+.timeline::before { content: ""; position: absolute; left: 15px; top: 16px; bottom: 16px; width: 2px; background: var(--border-strong); opacity: .7; }
+.timeline-item { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; padding: 12px 14px 12px 0; border-radius: var(--radius); cursor: pointer; transition: background .15s ease; }
+.timeline-item:hover { background: var(--surface); }
+.timeline-item.selected { background: var(--surface); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--border); }
+.turn-index { position: relative; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface); border: 2px solid var(--border-strong); color: var(--text-2); font-family: var(--mono); font-size: 12px; font-weight: 600; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.timeline-item.selected .turn-index { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px var(--accent-soft); }
+.turn-body { min-width: 0; }
+.turn-prompt, .story-prompt { margin: 0; padding: 8px 12px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.timeline-item.selected .turn-prompt { background: var(--surface-3); }
+.turn-summary { margin: 8px 0 0; color: var(--text-2); font-size: 13px; }
+.turn-panels { min-width: 0; }
+.turn-panel { scroll-margin-top: 72px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); overflow: hidden; }
+.turn-panel + .turn-panel { margin-top: 20px; }
+html.js .turn-panel:not(.active) { display: none; }
+.panel-prompt-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.panel-prompt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.panel-prompt-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.copy-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px; color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+.copy-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.copy-btn.copied { background: var(--add-bg); color: var(--add); border-color: var(--add); }
+.panel-prompt { margin: 0; max-height: 14em; overflow: auto; padding: 8px 12px; background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.turn-replies { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.replies-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.replies-head .icon { color: var(--accent-ink); }
+.replies-earlier { margin-top: 8px; }
+.replies-earlier > summary { cursor: pointer; font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.replies-earlier > summary:hover { color: var(--text-2); }
+.reply { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; color: var(--text); }
+.replies-earlier .reply { color: var(--text-2); padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px dashed var(--border); }
+.reply-final { max-height: 22em; overflow: auto; }
+.reply .turn-time { margin-bottom: 2px; }
+.file-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+html:not(.js) .file-filter { display: none; }
+.file-filter-btn { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; appearance: none; background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; color: var(--text-2); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; text-align: left; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.file-filter-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.file-filter-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-ring); color: var(--accent-ink); }
+.file-filter-btn .icon { width: 13px; height: 13px; }
+.file-filter-name { overflow-wrap: anywhere; }
+.file-filter-btn .edit-stats { margin-left: 0; }
+.edit.file-hidden { display: none; }
+.pick-hint { display: none; align-items: center; gap: 8px; margin: 0; padding: 22px 16px; color: var(--text-3); font-size: 13px; }
+html.js .turn-panel.no-pick .pick-hint { display: flex; }
+/* Floating previous/next step buttons, only while Review is showing. */
+.step-nav { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-2); }
+.step-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--text-2); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.step-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+.step-btn:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
+.step-btn:disabled { opacity: .35; cursor: default; }
+.step-pos { min-width: 52px; text-align: center; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+html:not(.js) .step-nav { display: none; }
+.story-card .turn-replies { margin: 12px 0 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+
+/* ---- edits & hunks ------------------------------------------------------ */
+.edit { scroll-margin-top: 72px; } /* clear the sticky lens nav when a diff link scrolls here */
+.edit.flash { animation: flash 1.2s ease-out both; }
+@keyframes flash { 0%, 40% { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent-ring); } 100% { background: transparent; box-shadow: inset 0 0 0 2px transparent; } }
+.edit-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12.5px; padding: 9px 16px; background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.panel-head + .edit-header, details > summary + .edit-header { border-top: none; }
+.edit-header > .icon { color: var(--text-3); }
+.edit-file { font-weight: 600; overflow-wrap: anywhere; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font); font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; border-radius: 4px; padding: 2px 7px; background: var(--surface-3); color: var(--text-2); }
+.badge .icon { width: 12px; height: 12px; }
+.badge.create { background: var(--add-bg); color: var(--add); }
+.badge.subagent { background: var(--accent-soft); color: var(--accent-ink); }
+.badge.delete { background: var(--del-bg); color: var(--del); }
+.badge.shell { background: var(--surface-3); color: var(--text-2); font-family: var(--mono); text-transform: none; letter-spacing: 0; }
+.edit-unknown { display: flex; align-items: center; gap: 8px; margin: 0; padding: 14px 16px; color: var(--text-3); font-style: italic; }
+table.hunk { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+table.hunk + table.hunk { border-top: 1px dashed var(--border-strong); }
+table.hunk td { padding: 0; vertical-align: top; }
+table.hunk td.ln { width: 44px; padding: 0 8px; text-align: right; color: var(--text-3); user-select: none; font-variant-numeric: tabular-nums; background: var(--surface-2); border-right: 1px solid var(--border); }
+table.hunk td.ln.new { border-right: none; }
+table.hunk td.code { padding: 0 14px 0 10px; white-space: pre; position: relative; }
+table.hunk td.code::before { content: " "; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+tr.hunk-line.add td.code { background: var(--add-line); }
+tr.hunk-line.add td.code::before { background: var(--add); }
+tr.hunk-line.add td.ln.new { background: var(--add-bg); color: var(--add); }
+tr.hunk-line.del td.code { background: var(--del-line); }
+tr.hunk-line.del td.code::before { background: var(--del); }
+tr.hunk-line.del td.ln.old { background: var(--del-bg); color: var(--del); }
+.edit { min-width: 0; }
+.view { overflow-x: auto; }
+/* Off-screen code blocks skip layout and paint; a long file or turn renders only what is in view. */
+.edit, .occurrence { content-visibility: auto; contain-intrinsic-size: auto 400px; }
+.turn-panel, .file-panel, .story-code { overflow-x: auto; }
+
+/* ---- diff lens ---------------------------------------------------------- */
+.diff-lens { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.diff-lens.empty { display: block; }
+.diff-lens.empty .no-edits { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.file-nav { position: sticky; top: 58px; max-height: calc(100vh - 78px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-right: 4px; }
+.file-search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 0 10px; color: var(--text-3); }
+.file-search:focus-within { border-color: var(--accent-ring); }
+.file-search input { flex: 1; min-width: 0; border: none; background: none; color: var(--text); font-family: var(--mono); font-size: 12.5px; padding: 8px 0; }
+.file-search input:focus { outline: none; }
+html:not(.js) .file-search { display: none; }
+.file-tree-item.name-hidden { display: none; }
+.file-search-empty { margin: 0; padding: 8px 10px; color: var(--text-3); font-size: 12.5px; font-style: italic; }
+.file-tree { list-style: none; margin: 0; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: 2px; }
+.file-tree-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-family: var(--mono); font-size: 12.5px; color: var(--text-2); transition: background .15s ease, color .15s ease; }
+.file-tree-item .icon { color: var(--text-3); }
+.file-tree-item .file-name { min-width: 0; overflow-wrap: anywhere; }
+.file-tree-item:hover { background: var(--surface-2); color: var(--text); }
+.file-tree-item.selected { background: var(--accent-soft); color: var(--accent-ink); }
+.file-tree-item.selected .icon { color: var(--accent-ink); }
+.file-tree-item.churn .file-name::after { content: " •"; color: var(--accent); }
+.file-panels { min-width: 0; }
+.file-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
+.file-panel + .file-panel { margin-top: 20px; }
+html.js .file-panel:not(.active) { display: none; }
+.turn-tag { display: inline-flex; align-items: center; gap: 6px; margin: 14px 16px 6px; padding: 4px 10px; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); border: 1px solid var(--accent-ring); border-radius: 999px; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .1s ease, color .15s ease; }
+.turn-tag:hover { background: var(--accent); color: #fff; transform: translateY(-1px); }
+.turn-tag .icon { width: 13px; height: 13px; }
+.turn-tag .jump-arrow { font-size: 11px; margin-left: 2px; opacity: .8; }
+
+/* ---- story lens --------------------------------------------------------- */
+.story-lens { position: relative; max-width: 76ch; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; padding-left: 44px; }
+.story-lens::before { content: ""; position: absolute; left: 15px; top: 24px; bottom: 24px; width: 2px; background: var(--border-strong); opacity: .7; }
+.story-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 18px 22px 16px; }
+.story-index { position: absolute; left: -44px; top: 18px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font-family: var(--mono); font-size: 12px; font-weight: 600; box-shadow: 0 0 0 4px var(--bg); }
+.story-prompt { font-size: 15px; margin-bottom: 12px; }
+.story-summary { margin: 0; font-size: 14.5px; color: var(--text); }
+.story-summary:empty { display: none; }
+.turn-filecount { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--text-3); font-size: 12px; }
+.story-filecount { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--text-3); font-size: 12.5px; }
+.story-code { margin: 12px -22px -16px; border-top: 1px solid var(--border); }
+.story-code summary { display: flex; align-items: center; gap: 6px; padding: 10px 22px; cursor: pointer; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; list-style: none; }
+.story-code summary::-webkit-details-marker { display: none; }
+.story-code summary::after { content: "▸"; margin-left: auto; transition: transform .15s ease; }
+.story-code[open] summary::after { transform: rotate(90deg); }
+.story-code summary:hover { background: var(--surface-2); }
+
+/* ---- report lens ---------------------------------------------------------- */
+.report-lens { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.report-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); padding: 18px 22px; }
+.report-block h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--text); }
+.report-block h2 .icon { color: var(--accent-ink); }
+.report-empty { margin: 0; color: var(--text-3); font-style: italic; font-size: 13px; }
+.report-count { margin: 0 0 10px; color: var(--text-3); font-size: 12.5px; }
+.report-summary, .report-plan-text { margin: 8px 0 0; font-size: 14px; color: var(--text); }
+.report-summary:first-child, .report-plan-text:first-child { margin-top: 0; }
+.report-decisions { margin: 0; padding-left: 20px; font-size: 13.5px; color: var(--text); }
+.report-decisions li + li { margin-top: 4px; }
+.report-turn-plan { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.report-turn-plan summary { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; list-style: none; }
+.report-turn-plan summary::-webkit-details-marker { display: none; }
+.report-turn-plan pre, .report-test-output pre { margin: 8px 0 0; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+
+
+.outcome-pill { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: var(--surface-3); color: var(--text-2); }
+.outcome-completed { background: var(--add-bg); color: var(--add); }
+.outcome-partial { background: var(--accent-soft); color: var(--accent-ink); }
+.outcome-failed, .outcome-blocked { background: var(--del-bg); color: var(--del); }
+
+.outcome-note { margin: 8px 0 0; font-size: 13px; color: var(--text-2); }
+
+.cmd-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.cmd-row:first-of-type { border-top: none; }
+.cmd-rest > .cmd-row:first-of-type { border-top: 1px solid var(--border); }
+.show-more { display: inline-flex; align-items: center; margin-top: 10px; padding: 6px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--accent-ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.show-more:hover { border-color: var(--accent-ring); }
+.cmd-status { display: inline-flex; width: 16px; height: 16px; }
+.cmd-status.ok .icon { color: var(--add); }
+.cmd-status.fail .icon { color: var(--del); }
+.cmd-status.unknown .icon { color: var(--text-3); }
+.cmd-turn { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+.cmd-category { text-transform: capitalize; }
+.cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); color: var(--text); }
+.cmd-exit { color: var(--text-3); font-size: 11.5px; }
+.cmd-more { color: var(--text-3); font-style: italic; }
+.report-test-output { flex-basis: 100%; margin-top: 4px; }
+.report-test-output summary { cursor: pointer; color: var(--accent-ink); font-size: 12px; font-weight: 600; list-style: none; }
+.report-test-output summary::-webkit-details-marker { display: none; }
+
+.error-row { padding: 10px 0; border-top: 1px solid var(--border); }
+.error-row:first-of-type { border-top: none; }
+.error-row .badge-error { background: var(--del-bg); color: var(--del); }
+.error-row .badge-rejected { background: var(--surface-3); color: var(--text-2); }
+.error-tool { margin-left: 4px; font-weight: 600; color: var(--text); font-size: 12.5px; }
+.error-message { margin: 6px 0 0; font-family: var(--mono); font-size: 12px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.error-resolution { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; font-size: 12.5px; color: var(--add); }
+.error-resolution .icon { color: var(--add); margin-top: 1px; }
+
+.dep-manifest { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 0; font-size: 12.5px; }
+.dep-manifest + .dep-manifest { border-top: 1px solid var(--border); }
+.dep-rel { font-family: var(--mono); font-weight: 600; color: var(--text); }
+.dep-added { color: var(--add); font-family: var(--mono); font-size: 12px; }
+.dep-removed { color: var(--del); font-family: var(--mono); font-size: 12px; }
+.dep-installs, .dep-config { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-2); }
+.dep-installs code, .dep-config code { font-family: var(--mono); }
+
+.git-branch, .git-range, .git-status { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13px; color: var(--text-2); }
+.git-range code, .git-commits code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+.git-commits { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text); }
+.git-commits li + li { margin-top: 4px; }
+
+/* ---- motion ------------------------------------------------------------- */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.header-inner > * { animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }
+.header-inner > :nth-child(2) { animation-delay: .04s; }
+.header-inner > :nth-child(3) { animation-delay: .08s; }
+.header-inner > :nth-child(4) { animation-delay: .12s; }
+.header-inner > :nth-child(5) { animation-delay: .16s; }
+.header-inner > :nth-child(6) { animation-delay: .20s; }
+.header-inner > :nth-child(7) { animation-delay: .24s; }
+.header-inner > :nth-child(8) { animation-delay: .28s; }
+/* Only the first few items stagger, so a long list settles within half a second. */
+.timeline-item, .story-card, .file-tree-item { animation: rise .4s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(.06s + min(var(--i, 0), 8) * .03s); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---- responsive --------------------------------------------------------- */
+@media (max-width: 900px) {
+  .review-lens, .diff-lens { grid-template-columns: 1fr; }
+  .totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lens-hint { display: none; }
+  .nav-opts { margin-left: 0; width: 100%; }
+  .opt-toggle { flex: 1; justify-content: center; }
+  .header-motif { width: 90%; opacity: calc(.1 * var(--motif)); }
+}
+@media (max-width: 520px) {
+  .story-lens { padding-left: 36px; }
+  .story-index { left: -36px; width: 28px; height: 28px; font-size: 11px; }
+  .story-lens::before { left: 13px; }
+  .stat-tile { padding: 10px 12px; }
+  .stat-value { font-size: 19px; }
+}
+
+/* ---- print -------------------------------------------------------------- */
+
+.metrics-scorecard { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.metrics-scorecard + .where-went { margin-top: 16px; }
+.metrics-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: start; }
+.metrics-group, .where-group { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+.metrics-group h3, .where-group h3, .where-title { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); }
+.metrics-group dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; }
+.metrics-group dt { color: var(--text-3); }
+.metrics-group dd { margin: 0; min-width: 0; overflow-wrap: anywhere; text-align: right; font-family: var(--mono); }
+.metrics-list { margin: 0; padding: 0; list-style: none; }
+.metrics-na, .metrics-note { color: var(--text-3); font-style: italic; }
+.metrics-env { margin: 10px 0 0; font-size: 11px; color: var(--text-3); }
+.where-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.where-list { list-style: none; margin: 0; padding: 0; }
+.where-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; min-width: 0; }
+.where-turn { font-family: var(--mono); font-size: 11px; color: var(--accent-ink); white-space: nowrap; }
+.where-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.where-bar { flex: none; width: 64px; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.where-bar span { display: block; height: 100%; background: var(--accent); }
+.where-value { min-width: 48px; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.metrics-jump { padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--accent-ink); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.metrics-jump:hover { border-color: var(--accent-ring); }
+html:not(.js) .metrics-jump { display: none; }
+@media print { .metrics-jump { display: none !important; } }
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --surface-2: #f6f6f6; --surface-3: #eee; --shadow-1: none; --shadow-2: none; }
+  body { font-size: 12px; }
+  .lens-nav, .header-motif, .lens-hint, .show-more, .step-nav { display: none !important; }
+  .lens-section, .turn-panel, .file-panel { display: block !important; }
+  .file-filter { display: none !important; }
+  .edit.file-hidden { display: block; }
+  .lens-section { padding: 16px 0; border-top: 1px solid #ccc; }
+  .story-code { display: block; }
+  .story-code summary { display: none; }
+  .story-code:not([open]) > *:not(summary) { display: block; }
+  .timeline-item, .story-card, .turn-panel, .file-panel { break-inside: avoid; }
+  * { animation: none !important; }
+  .edit, .occurrence { content-visibility: visible; }
+}
+</style>
+</head>
+<body>
+<header class="story-header"><svg class="header-motif" viewBox="0 0 640 220" preserveAspectRatio="xMaxYMid slice" aria-hidden="true" focusable="false"><defs><pattern id="motif-dots" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.4" fill="currentColor"/></pattern></defs><rect width="640" height="220" fill="url(#motif-dots)" opacity="0.5"/><g fill="none" stroke="currentColor" stroke-width="1.25" opacity="0.7"><circle cx="560" cy="110" r="52"/><circle cx="560" cy="110" r="92"/><circle cx="560" cy="110" r="132"/><circle cx="560" cy="110" r="172"/><circle cx="560" cy="110" r="212"/></g><path d="M0 190 C 160 150, 300 210, 640 120" fill="none" stroke="currentColor" stroke-width="1.25" opacity="0.45"/></svg><div class="header-inner"><div class="eyebrow"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Session story</span><span class="outcome-pill outcome-partial">Partial</span></div><h1>Due dates for todos</h1><div class="meta"><span class="cwd"><svg class="icon icon-folder" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M1.5 4h4l1.5 1.5h7.5v7.5h-13z"/></svg><span>/home/dev/todo-app</span></span><span class="branch"><svg class="icon icon-branch" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="4" cy="3" r="1.5"/><circle cx="4" cy="13" r="1.5"/><circle cx="12" cy="5" r="1.5"/><path d="M4 4.5v7M12 6.5c0 3-8 2-8 5"/></svg><span>feat/due-dates</span></span><span class="duration"><svg class="icon icon-clock" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg><span>2m · 2026-10-14 09:12 → 09:13 UTC</span></span><span class="generated" title="When this page was generated"><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg><span>Generated <time class="local-time" datetime="2026-10-15T12:13:18.018Z">2026-10-15 12:13 UTC</time></span></span></div><p class="summary">Todos take an optional due date, overdue ones render first and marked, and the README documents it. Sorting has no test yet.</p><div class="totals"><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span><span class="stat-text"><span class="stat-value">3</span> <span class="stat-label">turns</span></span></div><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg></span><span class="stat-text"><span class="stat-value"><span class="v-in">5</span><span class="v-all">5</span></span> <span class="stat-label">files</span></span></div><div class="stat-tile added"><span class="stat-icon"><svg class="icon icon-plus" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"/></svg></span><span class="stat-text"><span class="stat-value"><span class="v-in">+52</span><span class="v-all">+52</span></span> <span class="stat-label">added</span></span></div><div class="stat-tile removed"><span class="stat-icon"><svg class="icon icon-minus" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8h10"/></svg></span><span class="stat-text"><span class="stat-value"><span class="v-in">−14</span><span class="v-all">−14</span></span> <span class="stat-label">removed</span></span></div><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg></span><span class="stat-text"><span class="stat-value">453.9k</span> <span class="stat-label">input tokens incl. cache</span></span></div><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg></span><span class="stat-text"><span class="stat-value">3.2k</span> <span class="stat-label">output tokens</span></span></div><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-cost" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M10 5.8c-.4-.6-1.1-.9-2-.9-1.2 0-2 .6-2 1.5 0 2 4 1 4 3.1 0 .9-.9 1.6-2.1 1.6-.9 0-1.7-.4-2.1-1M8 3.6v1.3M8 11.1v1.3"/></svg></span><span class="stat-text"><span class="stat-value">$0.83</span> <span class="stat-label">est. API cost</span></span></div></div><div class="session-strip-wrap"><div class="session-strip" data-scope="in" role="img" aria-label="Lines changed per turn, left to right"><span class="strip-seg" style="flex-grow:41" title="Turn 1: +30 −11"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="strip-seg" style="flex-grow:15" title="Turn 2: +13 −2"><span class="bar-add" style="width:87%"></span><span class="bar-del" style="width:13%"></span></span><span class="strip-seg" style="flex-grow:10" title="Turn 3: +9 −1"><span class="bar-add" style="width:90%"></span><span class="bar-del" style="width:10%"></span></span></div><div class="session-strip" data-scope="all" role="img" aria-label="Lines changed per turn, left to right"><span class="strip-seg" style="flex-grow:41" title="Turn 1: +30 −11"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="strip-seg" style="flex-grow:15" title="Turn 2: +13 −2"><span class="bar-add" style="width:87%"></span><span class="bar-del" style="width:13%"></span></span><span class="strip-seg" style="flex-grow:10" title="Turn 3: +9 −1"><span class="bar-add" style="width:90%"></span><span class="bar-del" style="width:10%"></span></span></div><div class="strip-caption"><span>turn 1</span><span>turn 3</span></div></div><ul class="blind-spots"><li><svg class="icon icon-warning" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5V10M8 12h.01"/></svg><span>This session ran shell commands, which carry no diff in the transcript. Git reported no matching changes since the session started, so any files they changed are not shown.</span></li></ul></div></header><nav class="lens-nav"><div class="tabs" role="tablist" aria-label="Views"><button class="lens-tab" role="tab" data-lens="review" id="tab-review" aria-controls="lens-review" aria-selected="false" title="Each prompt you gave, next to the code changes it led to."><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span>Review</span><span class="tab-badge">3</span></button><button class="lens-tab" role="tab" data-lens="diff" id="tab-diff" aria-controls="lens-diff" aria-selected="false" title="Every file that changed, shown as a before-and-after diff."><svg class="icon icon-diff" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 2.5h4.5v11H2.5zM9 2.5h4.5v11H9z"/></svg><span>Diff</span><span class="tab-badge">5</span></button><button class="lens-tab" role="tab" data-lens="story" id="tab-story" aria-controls="lens-story" aria-selected="false" title="A plain-language account of what happened in the session, step by step."><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Story</span></button><button class="lens-tab" role="tab" data-lens="report" id="tab-report" aria-controls="lens-report" aria-selected="false" title="Checks, errors and how they were fixed, commands that ran, and what the session cost."><svg class="icon icon-report" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h8v13H4z"/><path d="M6.5 5h3M6.5 8h3M6.5 11h2"/></svg><span>Report</span></button></div><span class="lens-hint"><svg class="icon icon-keyboard" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="4" width="13" height="8" rx="1.5"/><path d="M4.5 7h.01M7 7h.01M9.5 7h.01M12 7h.01M5 9.5h6"/></svg><kbd>j</kbd><kbd>k</kbd> turns</span><span class="nav-opts"><button class="opt-toggle" type="button" data-opt="scope" aria-pressed="true" title="Hide edits to files outside this project"><svg class="icon icon-filter" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h12l-4.7 5.6V13L6.7 11.2V8.6z"/></svg><span>Project files only</span></button><button class="opt-toggle" type="button" data-opt="view" aria-pressed="false" title="Show the whole file around each change"><svg class="icon icon-expand" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 2.5H2.5V6M10 13.5h3.5V10M13.5 6V2.5H10M2.5 10v3.5H6"/></svg><span>Full file</span></button></span><button class="theme-toggle" type="button" aria-label="Theme: system" title="Toggle theme"><svg class="icon icon-sun" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06"/></svg><svg class="icon icon-moon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z"/></svg><svg class="icon icon-auto" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" stroke="none"/></svg></button></nav>
+<noscript><p class="no-js-note">This page needs JavaScript to show its views.</p></noscript>
+<section class="lens-section" id="lens-review" role="tabpanel" aria-labelledby="tab-review"><p class="lens-intro">Each prompt you gave, next to the code changes it led to.</p><template data-inert><div class="review-lens"><ol class="timeline"><li class="timeline-item" data-turn="1" tabindex="0" role="button" aria-pressed="false"><div class="turn-index">1</div><div class="turn-body"><time class="turn-time" datetime="2026-10-14T09:12:04.000Z">2026-10-14 09:12 UTC</time><blockquote class="turn-prompt">Add an optional due date to todos, and show overdue ones in red.</blockquote><p class="turn-summary">Added optional due dates and an overdue check, with tests.</p><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="bar-label"><span class="v-in">+30 −11</span><span class="v-all">+30 −11</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">1m 4s</span> · <span>2.0k out</span> · <span>189.1k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span><span class="share-track" title="62% of the session’s output tokens"><span class="share-fill" style="width:62%"></span></span></p><p class="turn-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">3 files changed</span><span class="v-all">3 files changed</span></p></div></li><li class="timeline-item" data-turn="2" tabindex="0" role="button" aria-pressed="false"><div class="turn-index">2</div><div class="turn-body"><time class="turn-time" datetime="2026-10-14T09:12:58.400Z">2026-10-14 09:12 UTC</time><blockquote class="turn-prompt">Sort the list so overdue items come first, then by due date.</blockquote><p class="turn-summary">Sorted the list: overdue first, then by due date.</p><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:32%"></span><span class="bar-del" style="width:5%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:32%"></span><span class="bar-del" style="width:5%"></span></span><span class="bar-label"><span class="v-in">+13 −2</span><span class="v-all">+13 −2</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">31.0 s</span> · <span>800 out</span> · <span>94.6k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span><span class="share-track" title="25% of the session’s output tokens"><span class="share-fill" style="width:25%"></span></span></p><p class="turn-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">2 files changed</span><span class="v-all">2 files changed</span></p></div></li><li class="timeline-item" data-turn="3" tabindex="0" role="button" aria-pressed="false"><div class="turn-index">3</div><div class="turn-body"><time class="turn-time" datetime="2026-10-14T09:13:27.000Z">2026-10-14 09:13 UTC</time><blockquote class="turn-prompt">Document due dates in the README.</blockquote><p class="turn-summary">Documented due dates in the README.</p><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:22%"></span><span class="bar-del" style="width:2%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:22%"></span><span class="bar-del" style="width:2%"></span></span><span class="bar-label"><span class="v-in">+9 −1</span><span class="v-all">+9 −1</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">14.0 s</span> · <span>270 out</span> · <span>37.8k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span><span class="share-track" title="8% of the session’s output tokens"><span class="share-fill" style="width:8%"></span></span></p><p class="turn-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">1 file changed</span><span class="v-all">1 file changed</span></p></div></li></ol><div class="turn-panels"><section class="turn-panel" data-turn-panel="1"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 1</span><time class="turn-time" datetime="2026-10-14T09:12:04.000Z">2026-10-14 09:12 UTC</time><span class="panel-meta"><span class="v-in"><span>4 edits</span> <span>3 files</span> <span class="edit-stats"><span class="add">+30</span><span class="del">−11</span></span></span><span class="v-all"><span>4 edits</span> <span>3 files</span> <span class="edit-stats"><span class="add">+30</span><span class="del">−11</span></span></span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">1m 4s</span> · <span>2.0k out</span> · <span>189.1k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><div class="panel-prompt-wrap"><div class="panel-prompt-head"><span class="panel-prompt-label">Prompt</span><button type="button" class="copy-btn" data-copy-target=".panel-prompt" aria-label="Copy prompt text">Copy</button></div><blockquote class="panel-prompt">Add an optional due date to todos, and show overdue ones in red.</blockquote></div><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">Todos now carry an optional YYYY-MM-DD due date and isOverdue() marks late, unfinished ones. A first test run failed and was fixed; 4 tests pass. A CSS rule for .overdue is still needed.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:12:53.900Z">2026-10-14 09:12 UTC</time>Todos now take an optional `due` date (stored as `YYYY-MM-DD`), and `isOverdue()` decides when one is late — never when it is done or has no date. Overdue items get an `overdue` class in `renderTodo`; the first test run failed because the old assertion compared the whole todo object, so I narrowed the tests and added two for the new behaviour. All 4 tests pass.
+
+You&#39;ll still need a CSS rule for `.overdue` — there is no stylesheet in the repo yet.</div></details></div><div class="file-filter" role="group" aria-label="Show changes for"><button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="false"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="file-filter-name">All changes</span><span class="v-in"><span class="edit-stats"><span class="add">+30</span><span class="del">−11</span></span></span><span class="v-all"><span class="edit-stats"><span class="add">+30</span><span class="del">−11</span></span></span></button><button type="button" class="file-filter-btn" data-file-filter="src/todo.js" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">src/todo.js</span><span class="edit-stats"><span class="add">+11</span><span class="del">−6</span></span></button><button type="button" class="file-filter-btn" data-file-filter="src/render.js" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">src/render.js</span><span class="edit-stats"><span class="add">+6</span><span class="del">−4</span></span></button><button type="button" class="file-filter-btn" data-file-filter="test/todo.test.js" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">test/todo.test.js</span><span class="edit-stats"><span class="add">+13</span><span class="del">−1</span></span></button></div><p class="pick-hint"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>Pick “All changes” or a file to see the code.</p><div class="edit" data-file="src/todo.js"><div class="edit-header" data-edit-id="toolu_10"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/todo.js</span><span class="edit-stats"><span class="add">+11</span><span class="del">−6</span></span></div><div class="view view-hunks" data-diff="b8ad5424306e"></div><div class="view view-full" data-diff="b8ad5424306e" data-base="21cccbf69939"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_14"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+6</span><span class="del">−4</span></span></div><div class="view view-hunks" data-diff="a57a81e14112"></div><div class="view view-full" data-diff="a57a81e14112" data-base="d4f61616ba21"></div></div><div class="edit" data-file="test/todo.test.js"><div class="edit-header" data-edit-id="toolu_26"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">test/todo.test.js</span><span class="edit-stats"><span class="add">+12</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="47d901d3a626"></div><div class="view view-full" data-diff="47d901d3a626" data-base="f9e6f12d91e6"></div></div><div class="edit" data-file="test/todo.test.js"><div class="edit-header" data-edit-id="toolu_30"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">test/todo.test.js</span><span class="edit-stats"><span class="add">+1</span><span class="del">−1</span></span></div><div class="view view-hunks" data-diff="5ac25d10bcb1"></div><div class="view view-full" data-diff="5ac25d10bcb1" data-base="3dfcafbd11b6"></div></div></template></section><section class="turn-panel" data-turn-panel="2"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 2</span><time class="turn-time" datetime="2026-10-14T09:12:58.400Z">2026-10-14 09:12 UTC</time><span class="panel-meta"><span class="v-in"><span>3 edits</span> <span>2 files</span> <span class="edit-stats"><span class="add">+13</span><span class="del">−2</span></span></span><span class="v-all"><span>3 edits</span> <span>2 files</span> <span class="edit-stats"><span class="add">+13</span><span class="del">−2</span></span></span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">31.0 s</span> · <span>800 out</span> · <span>94.6k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><div class="panel-prompt-wrap"><div class="panel-prompt-head"><span class="panel-prompt-label">Prompt</span><button type="button" class="copy-btn" data-copy-target=".panel-prompt" aria-label="Copy prompt text">Copy</button></div><blockquote class="panel-prompt">Sort the list so overdue items come first, then by due date.</blockquote></div><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">renderList now sorts through sortTodos(): overdue first, then by date with undated items last, then by title. Tests pass; sorting has no test yet.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:13:22.500Z">2026-10-14 09:13 UTC</time>`renderList` now sorts through a new `sortTodos()` in `src/sort.js`: overdue first, then by due date with undated items last, then alphabetically. It copies the array instead of sorting in place, so callers keep their order. Tests still pass; sorting itself has no test yet.</div></details></div><div class="file-filter" role="group" aria-label="Show changes for"><button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="false"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="file-filter-name">All changes</span><span class="v-in"><span class="edit-stats"><span class="add">+13</span><span class="del">−2</span></span></span><span class="v-all"><span class="edit-stats"><span class="add">+13</span><span class="del">−2</span></span></span></button><button type="button" class="file-filter-btn" data-file-filter="src/sort.js" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">src/sort.js</span><span class="edit-stats"><span class="add">+10</span><span class="del">−0</span></span></button><button type="button" class="file-filter-btn" data-file-filter="src/render.js" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">src/render.js</span><span class="edit-stats"><span class="add">+3</span><span class="del">−2</span></span></button></div><p class="pick-hint"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>Pick “All changes” or a file to see the code.</p><div class="edit" data-file="src/sort.js"><div class="edit-header" data-edit-id="toolu_42"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/sort.js</span><span class="badge create"><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg>new file</span><span class="edit-stats"><span class="add">+10</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="b0fc12a8693c"></div><div class="view view-full" data-diff="b0fc12a8693c" data-base="da39a3ee5e6b"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_46"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+2</span><span class="del">−2</span></span></div><div class="view view-hunks" data-diff="8395b111e246"></div><div class="view view-full" data-diff="8395b111e246" data-base="7bcf902e7b44"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_50"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+1</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="2c5428a30d67"></div><div class="view view-full" data-diff="2c5428a30d67" data-base="f59910709302"></div></div></template></section><section class="turn-panel" data-turn-panel="3"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 3</span><time class="turn-time" datetime="2026-10-14T09:13:27.000Z">2026-10-14 09:13 UTC</time><span class="panel-meta"><span class="v-in"><span>1 edit</span> <span>1 file</span> <span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></span><span class="v-all"><span>1 edit</span> <span>1 file</span> <span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">14.0 s</span> · <span>270 out</span> · <span>37.8k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><div class="panel-prompt-wrap"><div class="panel-prompt-head"><span class="panel-prompt-label">Prompt</span><button type="button" class="copy-btn" data-copy-target=".panel-prompt" aria-label="Copy prompt text">Copy</button></div><blockquote class="panel-prompt">Document due dates in the README.</blockquote></div><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">Added a &quot;Due dates&quot; README section with an example and the sort order.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:13:33.700Z">2026-10-14 09:13 UTC</time>Added a &quot;Due dates&quot; section to the README with a `createTodo` example and the sort order.</div></details></div><div class="file-filter" role="group" aria-label="Show changes for"><button type="button" class="file-filter-btn" data-file-filter="" aria-pressed="false"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg><span class="file-filter-name">All changes</span><span class="v-in"><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></span><span class="v-all"><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></span></button><button type="button" class="file-filter-btn" data-file-filter="README.md" aria-pressed="false" title="Show only this file's changes"><span class="file-filter-name">README.md</span><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></button></div><p class="pick-hint"><svg class="icon icon-review" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>Pick “All changes” or a file to see the code.</p><div class="edit" data-file="README.md"><div class="edit-header" data-edit-id="toolu_62"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">README.md</span><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></div><div class="view view-hunks" data-diff="0f717aba54be"></div><div class="view view-full" data-diff="0f717aba54be" data-base="7087504085a1"></div></div></template></section></div><nav class="step-nav" aria-label="Step through turns"><button type="button" class="step-btn" data-step="-1" aria-label="Previous step" title="Previous step (k)" disabled><svg class="icon icon-prev" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg></button><span class="step-pos" aria-live="polite">1 / 3</span><button type="button" class="step-btn" data-step="1" aria-label="Next step" title="Next step (j)"><svg class="icon icon-next" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 3.5L10.5 8 6 12.5"/></svg></button></nav></div></template></section>
+<section class="lens-section" id="lens-diff" role="tabpanel" aria-labelledby="tab-diff"><p class="lens-intro">Every file that changed, shown as a before-and-after diff.</p><template data-inert><div class="diff-lens"><div class="file-nav"><label class="file-search"><svg class="icon icon-search" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input type="search" placeholder="Filter files" aria-label="Filter files by name" autocomplete="off" spellcheck="false"></label><ul class="file-tree"><li class="file-tree-item" data-file="src/todo.js" tabindex="0" role="button" aria-pressed="false"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="file-name">src/todo.js</span><span class="edit-stats"><span class="add">+11</span><span class="del">−6</span></span></li><li class="file-tree-item churn" data-file="src/render.js" tabindex="0" role="button" aria-pressed="false"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="file-name">src/render.js</span><span class="edit-stats"><span class="add">+9</span><span class="del">−6</span></span></li><li class="file-tree-item" data-file="test/todo.test.js" tabindex="0" role="button" aria-pressed="false"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="file-name">test/todo.test.js</span><span class="edit-stats"><span class="add">+13</span><span class="del">−1</span></span></li><li class="file-tree-item" data-file="src/sort.js" tabindex="0" role="button" aria-pressed="false"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="file-name">src/sort.js</span><span class="edit-stats"><span class="add">+10</span><span class="del">−0</span></span></li><li class="file-tree-item" data-file="README.md" tabindex="0" role="button" aria-pressed="false"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="file-name">README.md</span><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></li></ul><p class="file-search-empty" hidden>No files match.</p></div><div class="file-panels"><section class="file-panel" data-file-panel="src/todo.js"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>src/todo.js</span><span class="panel-meta"><span>1 turn</span></span></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="1" title="Add an optional due date to todos, and show overdue ones in red. — Click to jump to Turn 1 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 1<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="b8ad5424306e"></div><div class="view view-full" data-diff="b8ad5424306e" data-base="21cccbf69939"></div></div></template></section><section class="file-panel" data-file-panel="src/render.js"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>src/render.js</span><span class="panel-meta"><span>2 turns</span><span class="churn-note">rewritten later</span></span></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="1" title="Add an optional due date to todos, and show overdue ones in red. — Click to jump to Turn 1 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 1<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="a57a81e14112"></div><div class="view view-full" data-diff="a57a81e14112" data-base="d4f61616ba21"></div></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="2" title="Sort the list so overdue items come first, then by due date. — Click to jump to Turn 2 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 2<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="8395b111e246"></div><div class="view view-full" data-diff="8395b111e246" data-base="7bcf902e7b44"></div></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="2" title="Sort the list so overdue items come first, then by due date. — Click to jump to Turn 2 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 2<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="2c5428a30d67"></div><div class="view view-full" data-diff="2c5428a30d67" data-base="f59910709302"></div></div></template></section><section class="file-panel" data-file-panel="test/todo.test.js"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>test/todo.test.js</span><span class="panel-meta"><span>1 turn</span></span></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="1" title="Add an optional due date to todos, and show overdue ones in red. — Click to jump to Turn 1 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 1<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="47d901d3a626"></div><div class="view view-full" data-diff="47d901d3a626" data-base="f9e6f12d91e6"></div></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="1" title="Add an optional due date to todos, and show overdue ones in red. — Click to jump to Turn 1 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 1<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="5ac25d10bcb1"></div><div class="view view-full" data-diff="5ac25d10bcb1" data-base="3dfcafbd11b6"></div></div></template></section><section class="file-panel" data-file-panel="src/sort.js"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>src/sort.js</span><span class="panel-meta"><span>1 turn</span></span></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="2" title="Sort the list so overdue items come first, then by due date. — Click to jump to Turn 2 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 2<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="b0fc12a8693c"></div><div class="view view-full" data-diff="b0fc12a8693c" data-base="da39a3ee5e6b"></div></div></template></section><section class="file-panel" data-file-panel="README.md"><template data-inert><div class="panel-head"><span class="panel-title"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>README.md</span><span class="panel-meta"><span>1 turn</span></span></div><div class="occurrence"><button type="button" class="turn-tag" data-jump-turn="3" title="Document due dates in the README. — Click to jump to Turn 3 in Review"><svg class="icon icon-turns" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Turn 3<span class="jump-arrow">↗</span></button><div class="view view-hunks" data-diff="0f717aba54be"></div><div class="view view-full" data-diff="0f717aba54be" data-base="7087504085a1"></div></div></template></section></div></div></template></section>
+<section class="lens-section" id="lens-story" role="tabpanel" aria-labelledby="tab-story"><p class="lens-intro">A plain-language account of what happened in the session, step by step.</p><template data-inert><div class="story-lens"><article class="story-card"><div class="story-index">1</div><blockquote class="story-prompt">Add an optional due date to todos, and show overdue ones in red.</blockquote><p class="story-summary">Added optional due dates and an overdue check, with tests.</p><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">Todos now carry an optional YYYY-MM-DD due date and isOverdue() marks late, unfinished ones. A first test run failed and was fixed; 4 tests pass. A CSS rule for .overdue is still needed.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:12:53.900Z">2026-10-14 09:12 UTC</time>Todos now take an optional `due` date (stored as `YYYY-MM-DD`), and `isOverdue()` decides when one is late — never when it is done or has no date. Overdue items get an `overdue` class in `renderTodo`; the first test run failed because the old assertion compared the whole todo object, so I narrowed the tests and added two for the new behaviour. All 4 tests pass.
+
+You&#39;ll still need a CSS rule for `.overdue` — there is no stylesheet in the repo yet.</div></details></div><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:73%"></span><span class="bar-del" style="width:27%"></span></span><span class="bar-label"><span class="v-in">+30 −11</span><span class="v-all">+30 −11</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">1m 4s</span> · <span>2.0k out</span> · <span>189.1k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><p class="story-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">3 files changed</span><span class="v-all">3 files changed</span></p><details class="story-code"><summary><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>Show code</summary><template data-inert><div class="edit" data-file="src/todo.js"><div class="edit-header" data-edit-id="toolu_10"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/todo.js</span><span class="edit-stats"><span class="add">+11</span><span class="del">−6</span></span></div><div class="view view-hunks" data-diff="b8ad5424306e"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_14"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+6</span><span class="del">−4</span></span></div><div class="view view-hunks" data-diff="a57a81e14112"></div></div><div class="edit" data-file="test/todo.test.js"><div class="edit-header" data-edit-id="toolu_26"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">test/todo.test.js</span><span class="edit-stats"><span class="add">+12</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="47d901d3a626"></div></div><div class="edit" data-file="test/todo.test.js"><div class="edit-header" data-edit-id="toolu_30"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">test/todo.test.js</span><span class="edit-stats"><span class="add">+1</span><span class="del">−1</span></span></div><div class="view view-hunks" data-diff="5ac25d10bcb1"></div></div></template></details></article><article class="story-card"><div class="story-index">2</div><blockquote class="story-prompt">Sort the list so overdue items come first, then by due date.</blockquote><p class="story-summary">Sorted the list: overdue first, then by due date.</p><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">renderList now sorts through sortTodos(): overdue first, then by date with undated items last, then by title. Tests pass; sorting has no test yet.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:13:22.500Z">2026-10-14 09:13 UTC</time>`renderList` now sorts through a new `sortTodos()` in `src/sort.js`: overdue first, then by due date with undated items last, then alphabetically. It copies the array instead of sorting in place, so callers keep their order. Tests still pass; sorting itself has no test yet.</div></details></div><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:32%"></span><span class="bar-del" style="width:5%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:32%"></span><span class="bar-del" style="width:5%"></span></span><span class="bar-label"><span class="v-in">+13 −2</span><span class="v-all">+13 −2</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">31.0 s</span> · <span>800 out</span> · <span>94.6k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><p class="story-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">2 files changed</span><span class="v-all">2 files changed</span></p><details class="story-code"><summary><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>Show code</summary><template data-inert><div class="edit" data-file="src/sort.js"><div class="edit-header" data-edit-id="toolu_42"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/sort.js</span><span class="badge create"><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg>new file</span><span class="edit-stats"><span class="add">+10</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="b0fc12a8693c"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_46"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+2</span><span class="del">−2</span></span></div><div class="view view-hunks" data-diff="8395b111e246"></div></div><div class="edit" data-file="src/render.js"><div class="edit-header" data-edit-id="toolu_50"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">src/render.js</span><span class="edit-stats"><span class="add">+1</span><span class="del">−0</span></span></div><div class="view view-hunks" data-diff="2c5428a30d67"></div></div></template></details></article><article class="story-card"><div class="story-index">3</div><blockquote class="story-prompt">Document due dates in the README.</blockquote><p class="story-summary">Documented due dates in the README.</p><div class="turn-replies"><div class="replies-head"><svg class="icon icon-story" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3h4.5a1 1 0 0 1 1 1v9.5H3.5a1 1 0 0 1-1-1zM13.5 3H9a1 1 0 0 0-1 1v9.5h4.5a1 1 0 0 0 1-1z"/></svg><span>Claude’s output</span></div><div class="reply reply-final reply-answer">Added a &quot;Due dates&quot; README section with an example and the sort order.</div><details class="replies-earlier"><summary>1 original message</summary><div class="reply"><time class="turn-time" datetime="2026-10-14T09:13:33.700Z">2026-10-14 09:13 UTC</time>Added a &quot;Due dates&quot; section to the README with a `createTodo` example and the sort order.</div></details></div><div class="turn-bars"><span class="bar-track" data-scope="in"><span class="bar-add" style="width:22%"></span><span class="bar-del" style="width:2%"></span></span><span class="bar-track" data-scope="all"><span class="bar-add" style="width:22%"></span><span class="bar-del" style="width:2%"></span></span><span class="bar-label"><span class="v-in">+9 −1</span><span class="v-all">+9 −1</span></span></div><p class="turn-usage"><span class="tu-dur" title="reported by Claude Code">14.0 s</span> · <span>270 out</span> · <span>37.8k in <span class="tu-cache" title="read from the prompt cache">(95% cache)</span></span></p><p class="story-filecount"><svg class="icon icon-files" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg><span class="v-in">1 file changed</span><span class="v-all">1 file changed</span></p><details class="story-code"><summary><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>Show code</summary><template data-inert><div class="edit" data-file="README.md"><div class="edit-header" data-edit-id="toolu_62"><svg class="icon icon-code" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg><span class="edit-file">README.md</span><span class="edit-stats"><span class="add">+9</span><span class="del">−1</span></span></div><div class="view view-hunks" data-diff="0f717aba54be"></div></div></template></details></article></div></template></section>
+<section class="lens-section" id="lens-report" role="tabpanel" aria-labelledby="tab-report"><p class="lens-intro">Checks, errors and how they were fixed, commands that ran, and what the session cost.</p><template data-inert><div class="report-lens"><section class="report-block"><h2><svg class="icon icon-report" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h8v13H4z"/><path d="M6.5 5h3M6.5 8h3M6.5 11h2"/></svg><span>Outcome & summary</span></h2><span class="outcome-pill outcome-partial">Partial</span><p class="outcome-note">Works and is tested, except sortTodos(), and .overdue has no CSS rule yet.</p><p class="report-summary">Todos take an optional due date, overdue ones render first and marked, and the README documents it. Sorting has no test yet.</p></section><section class="report-block"><h2><svg class="icon icon-sparkle" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5l1.6 4.4L14 7.5l-4.4 1.6L8 13.5 6.4 9.1 2 7.5l4.4-1.6z"/></svg><span>Session metrics</span></h2><div class="metrics-scorecard"><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-terminal" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6.5L7 9l-2.5 2.5M8.5 11.5h3"/></svg></span><span class="stat-text"><span class="stat-value">14</span> <span class="stat-label">tool calls</span></span></div><div class="stat-tile removed"><span class="stat-icon"><svg class="icon icon-cross" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><span class="stat-text"><span class="stat-value">1</span> <span class="stat-label">failed</span></span></div><div class="stat-tile added"><span class="stat-icon"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span><span class="stat-text"><span class="stat-value">2/3</span> <span class="stat-label">validation, last passed</span></span></div><div class="stat-tile"><span class="stat-icon"><svg class="icon icon-retry" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 8a5 5 0 1 1-1.5-3.55"/><path d="M13 2.5v3h-3"/></svg></span><span class="stat-text"><span class="stat-value">1</span> <span class="stat-label">retry</span></span></div></div><div class="where-went"><h3 class="where-title">Where it went</h3><div class="where-lists"><section class="where-group"><h3>By output tokens</h3><ol class="where-list"><li class="where-row" data-turn="1"><span class="where-turn">Turn 1</span><span class="where-text">Added optional due dates and an overdue check, with tests.</span><span class="where-bar"><span style="width:100%"></span></span><span class="where-value">2.0k</span><button type="button" class="metrics-jump" data-jump-turn="1">Open</button></li><li class="where-row" data-turn="2"><span class="where-turn">Turn 2</span><span class="where-text">Sorted the list: overdue first, then by due date.</span><span class="where-bar"><span style="width:40%"></span></span><span class="where-value">800</span><button type="button" class="metrics-jump" data-jump-turn="2">Open</button></li><li class="where-row" data-turn="3"><span class="where-turn">Turn 3</span><span class="where-text">Documented due dates in the README.</span><span class="where-bar"><span style="width:14%"></span></span><span class="where-value">270</span><button type="button" class="metrics-jump" data-jump-turn="3">Open</button></li></ol></section><section class="where-group"><h3>By duration</h3><ol class="where-list"><li class="where-row" data-turn="1"><span class="where-turn">Turn 1</span><span class="where-text">Added optional due dates and an overdue check, with tests.</span><span class="where-bar"><span style="width:100%"></span></span><span class="where-value" title="reported by Claude Code">1m 4s</span><button type="button" class="metrics-jump" data-jump-turn="1">Open</button></li><li class="where-row" data-turn="2"><span class="where-turn">Turn 2</span><span class="where-text">Sorted the list: overdue first, then by due date.</span><span class="where-bar"><span style="width:48%"></span></span><span class="where-value" title="reported by Claude Code">31.0 s</span><button type="button" class="metrics-jump" data-jump-turn="2">Open</button></li><li class="where-row" data-turn="3"><span class="where-turn">Turn 3</span><span class="where-text">Documented due dates in the README.</span><span class="where-bar"><span style="width:22%"></span></span><span class="where-value" title="reported by Claude Code">14.0 s</span><button type="button" class="metrics-jump" data-jump-turn="3">Open</button></li></ol></section></div></div></section><section class="report-block"><h2><svg class="icon icon-plan" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h8v13H4z"/><path d="M6.5 5h3M6.5 8h3"/><path d="M6 11l1.3 1.3L10.5 9"/></svg><span>Plan / intent</span></h2><p class="report-plan-text">Give todos an optional due date, highlight the ones that are overdue, and put them at the top of the list. Then document the feature.</p></section><section class="report-block"><h2><svg class="icon icon-decision" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.2 1.3"/></svg><span>Decisions</span></h2><ul class="report-decisions"><li>Stored due dates as YYYY-MM-DD strings, so comparing them is a plain string comparison.</li><li>Sorted a copy in sortTodos() instead of sorting the caller&#39;s array in place.</li></ul></section><section class="report-block"><h2><svg class="icon icon-terminal" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6.5L7 9l-2.5 2.5M8.5 11.5h3"/></svg><span>Commands executed</span></h2><p class="report-count">3 commands, 1 failed</p><div class="cmd-row"><span class="cmd-status fail"><svg class="icon icon-cross" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><span class="cmd-turn">turn 1</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code><span class="cmd-exit">exit 1</span><span class="cmd-exit">output under Tests &amp; validation</span></div><div class="cmd-row"><span class="cmd-status ok"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span><span class="cmd-turn">turn 1</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code></div><div class="cmd-row"><span class="cmd-status ok"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span><span class="cmd-turn">turn 2</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code></div></section><section class="report-block"><h2><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg><span>Tests & validation</span></h2><p class="report-count">last run: passed</p><div class="cmd-row"><span class="cmd-status fail"><svg class="icon icon-cross" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><span class="cmd-turn">turn 1</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code><span class="cmd-exit">failed</span></div><details class="report-test-output"><summary>output</summary><pre>Error: Exit code 1
+✖ createTodo trims the title
+  AssertionError: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Lines skipped
+ℹ tests 2
+ℹ pass 1
+ℹ fail 1</pre></details><div class="cmd-row"><span class="cmd-status ok"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span><span class="cmd-turn">turn 1</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code><span class="cmd-exit">passed</span></div><div class="cmd-row"><span class="cmd-status ok"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span><span class="cmd-turn">turn 2</span><span class="badge cmd-category">test</span><code class="cmd-text">npm test</code><span class="cmd-exit">passed</span></div></section><section class="report-block"><h2><svg class="icon icon-warning" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5V10M8 12h.01"/></svg><span>Errors encountered</span></h2><div class="error-row"><span class="badge badge-error">error</span><span class="cmd-turn">turn 1</span><span class="error-tool">Bash</span><code class="cmd-text">npm test</code><p class="error-message">Error: Exit code 1
+✖ createTodo trims the title
+  AssertionError: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Lines skipped
+ℹ tests 2
+ℹ pass 1
+ℹ fail 1</p><p class="error-resolution"><svg class="icon icon-check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5l3.2 3.2L13 5"/></svg>The old assertion compared the whole todo object; the tests were narrowed and two were added for due dates.</p></div></section><section class="report-block"><h2><svg class="icon icon-package" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2l6 3.2v5.6L8 14l-6-3.2V5.2z"/><path d="M2 5.2L8 8.4l6-3.2M8 8.4V14"/></svg><span>Dependencies</span></h2><p class="report-empty">None recorded.</p></section><section class="report-block"><h2><svg class="icon icon-commit" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8h4M10.5 8h4"/></svg><span>Git state</span></h2><p class="report-empty">None recorded.</p></section><section class="report-block"><h2><svg class="icon icon-trace" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 3.5h3M2.5 8h6M2.5 12.5h4.5"/><circle cx="8" cy="3.5" r="1.3"/><circle cx="11" cy="8" r="1.3"/><circle cx="9.5" cy="12.5" r="1.3"/></svg><span>Metrics</span></h2><div class="metrics-groups"><section class="metrics-group"><h3>Execution</h3><dl><dt>Duration</dt><dd>1m 30s</dd><dt>Turns</dt><dd>3</dd><dt>Tool calls</dt><dd>14</dd><dt>Failed</dt><dd>1</dd><dt>Rejected</dt><dd>0</dd><dt>Commands</dt><dd>3</dd><dt>Failed commands</dt><dd>1</dd><dt>Retries</dt><dd>1</dd></dl></section><section class="metrics-group"><h3>Code</h3><dl><dt>Files changed</dt><dd><span class="v-in">5</span><span class="v-all">5</span></dd><dt>Lines added</dt><dd><span class="v-in">52</span><span class="v-all">52</span></dd><dt>Lines removed</dt><dd><span class="v-in">14</span><span class="v-all">14</span></dd><dt>Edits</dt><dd><span class="v-in">8</span><span class="v-all">8</span></dd><dt>Edited more than once</dt><dd><ul class="metrics-list"><li><code>src/render.js</code> ×3</li><li><code>test/todo.test.js</code> ×2</li></ul></dd></dl></section><section class="metrics-group"><h3>Validation</h3><dl><dt>Test, lint, build runs</dt><dd>3</dd><dt>Passed</dt><dd>2</dd><dt>Failed</dt><dd>1</dd><dt>Last result</dt><dd>passed</dd><dt>Last command</dt><dd><code>npm test</code></dd></dl></section><section class="metrics-group"><h3>Reads</h3><dl><dt>Files read</dt><dd>3</dd><dt>Read, Glob, Grep calls</dt><dd>3</dd></dl></section><section class="metrics-group"><h3>Usage</h3><dl><dt>Input tokens</dt><dd>290</dd><dt>Output tokens</dt><dd>3.2k</dd><dt>Cache read</dt><dd>432.0k</dd><dt>Cache write</dt><dd>21.6k</dd><dt>Cost</dt><dd><span title="Claude Code&#39;s estimate at API list prices. A Pro or Max subscription does not bill this amount.">$0.83</span> <span class="metrics-note">API-equivalent estimate</span></dd><dt>Models</dt><dd><code>claude-opus-5-5</code></dd><dt>Source</dt><dd>Claude Code's session cost record</dd></dl></section></div><p class="metrics-env">Claude Code 2.1.290</p></section></div></template></section>
+<script type="application/json" id="story-data">{"diffs":{"b8ad5424306e":[{"oldStart":1,"oldLines":9,"newStart":1,"lines":["-export function createTodo(title) {","-  return {","-    id: crypto.randomUUID(),","-    title: title.trim(),","-    done: false,","-  };","+export function createTodo(title, { due = null } = {}) {","+  return {","+    id: crypto.randomUUID(),","+    title: title.trim(),","+    done: false,","+    due: due ? new Date(due).toISOString().slice(0, 10) : null,","+  };","+}","+","+export function isOverdue(todo, today = new Date()) {","+  return !todo.done && todo.due !== null && todo.due < today.toISOString().slice(0, 10);"," }"," "," export function toggle(todo) {"]}],"a57a81e14112":[{"oldStart":1,"oldLines":8,"newStart":1,"lines":[" import { escape } from './html.js';","-","-export function renderTodo(todo) {","-  const cls = todo.done ? 'todo done' : 'todo';","-  return `<li class=\"${cls}\">${escape(todo.title)}<\/li>`;","+import { isOverdue } from './todo.js';","+","+export function renderTodo(todo, today) {","+  const cls = ['todo', todo.done && 'done', isOverdue(todo, today) && 'overdue'].filter(Boolean).join(' ');","+  const due = todo.due ? ` <time datetime=\"${todo.due}\">${todo.due}<\/time>` : '';","+  return `<li class=\"${cls}\">${escape(todo.title)}${due}<\/li>`;"," }"," "," export function renderList(todos) {"]}],"47d901d3a626":[{"oldStart":6,"oldLines":6,"newStart":6,"lines":["   assert.equal(createTodo('  milk ').title, 'milk');"," });"," ","+test('createTodo keeps an optional due date as YYYY-MM-DD', () => {","+  assert.equal(createTodo('a', { due: '2026-10-20T08:00:00Z' }).due, '2026-10-20');","+  assert.equal(createTodo('a').due, null);","+});","+","+test('isOverdue ignores done todos and todos without a date', () => {","+  const today = new Date('2026-10-14');","+  assert.equal(isOverdue(createTodo('a', { due: '2026-10-01' }), today), true);","+  assert.equal(isOverdue(toggle(createTodo('a', { due: '2026-10-01' })), today), false);","+  assert.equal(isOverdue(createTodo('a'), today), false);","+});","+"," test('toggle flips done', () => {","   assert.equal(toggle(createTodo('a')).done, true);"," });"]}],"5ac25d10bcb1":[{"oldStart":1,"oldLines":6,"newStart":1,"lines":[" import { test } from 'node:test';"," import assert from 'node:assert/strict';","-import { createTodo, toggle } from '../src/todo.js';","+import { createTodo, toggle, isOverdue } from '../src/todo.js';"," "," test('createTodo trims the title', () => {","   assert.equal(createTodo('  milk ').title, 'milk');"]}],"b0fc12a8693c":[{"oldStart":0,"oldLines":0,"newStart":1,"lines":["+import { isOverdue } from './todo.js';","+","+/** Overdue first, then by due date (undated last), then by title. */","+export function sortTodos(todos, today = new Date()) {","+  return [...todos].sort((a, b) =>","+    Number(isOverdue(b, today)) - Number(isOverdue(a, today)) ||","+    (a.due ?? '9999-12-31').localeCompare(b.due ?? '9999-12-31') ||","+    a.title.localeCompare(b.title)","+  );","+}"]}],"8395b111e246":[{"oldStart":7,"oldLines":6,"newStart":7,"lines":["   return `<li class=\"${cls}\">${escape(todo.title)}${due}<\/li>`;"," }"," ","-export function renderList(todos) {","-  return `<ul>${todos.map(renderTodo).join('')}<\/ul>`;","+export function renderList(todos, today = new Date()) {","+  return `<ul>${sortTodos(todos, today).map((t) => renderTodo(t, today)).join('')}<\/ul>`;"," }"]}],"2c5428a30d67":[{"oldStart":1,"oldLines":5,"newStart":1,"lines":[" import { escape } from './html.js';"," import { isOverdue } from './todo.js';","+import { sortTodos } from './sort.js';"," "," export function renderTodo(todo, today) {","   const cls = ['todo', todo.done && 'done', isOverdue(todo, today) && 'overdue'].filter(Boolean).join(' ');"]}],"0f717aba54be":[{"oldStart":6,"oldLines":4,"newStart":6,"lines":[" "," ```js"," import { createTodo } from './src/todo.js';","-```","+","+const milk = createTodo('Buy milk', { due: '2026-10-20' });","+```","+","+## Due dates","+","+A todo may carry a `due` date (`YYYY-MM-DD`). Lists render overdue,","+unfinished todos first with an `overdue` class, then the rest by due date;","+todos without a date come last."]}]},"bases":{"7087504085a1":"# todo-app\n\nA tiny todo list with no dependencies.\n\n## Usage\n\n```js\nimport { createTodo } from './src/todo.js';\n```\n","f59910709302":"import { escape } from './html.js';\nimport { isOverdue } from './todo.js';\n\nexport function renderTodo(todo, today) {\n  const cls = ['todo', todo.done && 'done', isOverdue(todo, today) && 'overdue'].filter(Boolean).join(' ');\n  const due = todo.due ? ` <time datetime=\"${todo.due}\">${todo.due}<\/time>` : '';\n  return `<li class=\"${cls}\">${escape(todo.title)}${due}<\/li>`;\n}\n\nexport function renderList(todos, today = new Date()) {\n  return `<ul>${sortTodos(todos, today).map((t) => renderTodo(t, today)).join('')}<\/ul>`;\n}\n","7bcf902e7b44":"import { escape } from './html.js';\nimport { isOverdue } from './todo.js';\n\nexport function renderTodo(todo, today) {\n  const cls = ['todo', todo.done && 'done', isOverdue(todo, today) && 'overdue'].filter(Boolean).join(' ');\n  const due = todo.due ? ` <time datetime=\"${todo.due}\">${todo.due}<\/time>` : '';\n  return `<li class=\"${cls}\">${escape(todo.title)}${due}<\/li>`;\n}\n\nexport function renderList(todos) {\n  return `<ul>${todos.map(renderTodo).join('')}<\/ul>`;\n}\n","da39a3ee5e6b":"","3dfcafbd11b6":"import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { createTodo, toggle } from '../src/todo.js';\n\ntest('createTodo trims the title', () => {\n  assert.equal(createTodo('  milk ').title, 'milk');\n});\n\ntest('createTodo keeps an optional due date as YYYY-MM-DD', () => {\n  assert.equal(createTodo('a', { due: '2026-10-20T08:00:00Z' }).due, '2026-10-20');\n  assert.equal(createTodo('a').due, null);\n});\n\ntest('isOverdue ignores done todos and todos without a date', () => {\n  const today = new Date('2026-10-14');\n  assert.equal(isOverdue(createTodo('a', { due: '2026-10-01' }), today), true);\n  assert.equal(isOverdue(toggle(createTodo('a', { due: '2026-10-01' })), today), false);\n  assert.equal(isOverdue(createTodo('a'), today), false);\n});\n\ntest('toggle flips done', () => {\n  assert.equal(toggle(createTodo('a')).done, true);\n});\n","f9e6f12d91e6":"import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { createTodo, toggle } from '../src/todo.js';\n\ntest('createTodo trims the title', () => {\n  assert.equal(createTodo('  milk ').title, 'milk');\n});\n\ntest('toggle flips done', () => {\n  assert.equal(toggle(createTodo('a')).done, true);\n});\n","d4f61616ba21":"import { escape } from './html.js';\n\nexport function renderTodo(todo) {\n  const cls = todo.done ? 'todo done' : 'todo';\n  return `<li class=\"${cls}\">${escape(todo.title)}<\/li>`;\n}\n\nexport function renderList(todos) {\n  return `<ul>${todos.map(renderTodo).join('')}<\/ul>`;\n}\n","21cccbf69939":"export function createTodo(title) {\n  return {\n    id: crypto.randomUUID(),\n    title: title.trim(),\n    done: false,\n  };\n}\n\nexport function toggle(todo) {\n  return { ...todo, done: !todo.done };\n}\n"}}</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var themeBtn = document.querySelector('.theme-toggle');
+  if (!themeBtn) return;
+  function syncThemeLabel() {
+    var name = root.getAttribute('data-theme') || 'system';
+    themeBtn.setAttribute('aria-label', 'Theme: ' + name);
+    themeBtn.title = 'Theme: ' + name + ' (click to change)';
+  }
+  themeBtn.addEventListener('click', function () {
+    var current = root.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : (current === 'light' ? null : 'dark');
+    if (next) root.setAttribute('data-theme', next); else root.removeAttribute('data-theme');
+    try {
+      if (next) localStorage.setItem('session-story-theme', next);
+      else localStorage.removeItem('session-story-theme');
+    } catch (e) {}
+    syncThemeLabel();
+  });
+  syncThemeLabel();
+})();
+function escapeHtml(str) {
+  var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(str).replace(/[&<>"']/g, function (ch) { return map[ch]; });
+}
+function lineKind(line) {
+  if (line.charAt(0) === '+') return 'add';
+  if (line.charAt(0) === '-') return 'del';
+  return 'ctx';
+}
+function hunkRow(kind, oldNo, newNo, text) {
+  return (
+    '<tr class="hunk-line ' + kind + '">' +
+    '<td class="ln old">' + (oldNo === null ? '' : oldNo) + '</td>' +
+    '<td class="ln new">' + (newNo === null ? '' : newNo) + '</td>' +
+    '<td class="code">' + escapeHtml(text) + '</td>' +
+    '</tr>'
+  );
+}
+function hunkTableHtml(hunk) {
+  var oldLine = hunk.oldStart;
+  var newLine = hunk.newStart;
+  var rows = '';
+  for (var i = 0; i < hunk.lines.length; i++) {
+    var line = hunk.lines[i];
+    var kind = lineKind(line);
+    var oldCell = null;
+    var newCell = null;
+    if (kind !== 'add') oldCell = oldLine++;
+    if (kind !== 'del') newCell = newLine++;
+    rows += hunkRow(kind, oldCell, newCell, line.slice(1));
+  }
+  return '<table class="hunk">' + rows + '</table>';
+}
+function hunksHtml(hunks) {
+  var out = '';
+  for (var i = 0; i < (hunks || []).length; i++) out += hunkTableHtml(hunks[i]);
+  return out;
+}
+function spliceRows(baseText, hunks) {
+  var oldLines = baseText.split('\n');
+  if (oldLines.length > 0 && oldLines[oldLines.length - 1] === '') oldLines.pop();
+  var ordered = (hunks || []).slice().sort(function (a, b) { return a.oldStart - b.oldStart; });
+  var rows = [];
+  var cursor = 1; // next untouched old line to copy across (1-based)
+  var newNo = 1;
+  for (var h = 0; h < ordered.length; h++) {
+    var hunk = ordered[h];
+    var start = Math.max(1, hunk.oldStart);
+    for (; cursor < start; cursor++) {
+      var kept = oldLines[cursor - 1];
+      rows.push({ kind: 'ctx', oldNo: cursor, newNo: newNo++, text: kept === undefined ? '' : kept });
+    }
+    var oldNo = start;
+    newNo = hunk.newStart;
+    for (var i = 0; i < hunk.lines.length; i++) {
+      var line = hunk.lines[i];
+      var kind = lineKind(line);
+      var text = line.slice(1);
+      if (kind === 'add') rows.push({ kind: 'add', oldNo: null, newNo: newNo++, text: text });
+      else if (kind === 'del') rows.push({ kind: 'del', oldNo: oldNo++, newNo: null, text: text });
+      else rows.push({ kind: 'ctx', oldNo: oldNo++, newNo: newNo++, text: text });
+    }
+    cursor = Math.max(cursor, hunk.oldStart + hunk.oldLines);
+  }
+  for (; cursor <= oldLines.length; cursor++) {
+    rows.push({ kind: 'ctx', oldNo: cursor, newNo: newNo++, text: oldLines[cursor - 1] });
+  }
+  return rows;
+}
+function fullTableHtml(rows) {
+  var body = '';
+  for (var i = 0; i < rows.length; i++) body += hunkRow(rows[i].kind, rows[i].oldNo, rows[i].newNo, rows[i].text);
+  return '<table class="hunk full">' + body + '</table>';
+}
+(function () {
+  // Times are rendered in UTC; .local-time ones are shown in the viewer's
+  // own time zone instead, keeping the UTC value as the tooltip.
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  Array.prototype.forEach.call(document.querySelectorAll('time.local-time'), function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d.getTime())) return;
+    var zone = '';
+    try {
+      var part = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(d)
+        .filter(function (p) { return p.type === 'timeZoneName'; })[0];
+      if (part) zone = ' ' + part.value;
+    } catch (e) {}
+    el.title = el.textContent;
+    el.textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes()) + zone;
+  });
+})();
+(function () {
+  var root = document.documentElement;
+  // The two view options: each maps to a class on <html>, so all the
+  // filtering and view switching is CSS. "Project files only" on and
+  // "Full file" off is the default, the *absence* of both classes; a page
+  // always opens that way, since file:// pages share storage and one
+  // remembered choice would carry into every other story.
+  var OPTIONS = {
+    scope: { cls: 'show-outside', pressedWhenSet: false },
+    view: { cls: 'full-context', pressedWhenSet: true },
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.opt-toggle'), function (btn) {
+    var opt = OPTIONS[btn.dataset.opt];
+    if (!opt) return;
+    function sync() {
+      var set = root.classList.contains(opt.cls);
+      btn.setAttribute('aria-pressed', String(opt.pressedWhenSet ? set : !set));
+    }
+    btn.addEventListener('click', function () {
+      root.classList.toggle(opt.cls);
+      sync();
+      if (btn.dataset.opt === 'view') renderShown();
+    });
+    sync();
+  });
+  // Code is not in the markup: each .view names an entry in the story data
+  // and is rendered the first time it is shown (src/render/story-data.mjs).
+  var storyData = null;
+  function codeData() {
+    if (!storyData) {
+      var el = document.getElementById('story-data');
+      try { storyData = JSON.parse(el ? el.textContent : '{}'); } catch (e) { storyData = {}; }
+      storyData.diffs = storyData.diffs || {};
+      storyData.bases = storyData.bases || {};
+    }
+    return storyData;
+  }
+  // Parse the code data while the reader is still looking at the page, so the
+  // first diff they open does not wait on it.
+  if (window.requestIdleCallback) window.requestIdleCallback(codeData, { timeout: 4000 });
+  // Story always shows hunks; Review and Diff show whichever Full file picks.
+  function wanted(view) {
+    var full = root.classList.contains('full-context');
+    if (view.classList.contains('view-full')) return full;
+    return !full || !view.closest('#lens-review, #lens-diff');
+  }
+  function renderView(view) {
+    view.setAttribute('data-done', '');
+    var data = codeData();
+    var hunks = data.diffs[view.dataset.diff] || [];
+    if (view.classList.contains('view-full')) {
+      var base = data.bases[view.dataset.base];
+      if (typeof base === 'string') view.insertAdjacentHTML('beforeend', fullTableHtml(spliceRows(base, hunks)));
+    } else {
+      view.innerHTML = hunksHtml(hunks);
+    }
+  }
+  function renderPending(container) {
+    if (!container) return;
+    var views = container.querySelectorAll('.view-hunks[data-diff]:not([data-done]), .view-full[data-base]:not([data-done])');
+    Array.prototype.forEach.call(views, function (view) { if (wanted(view)) renderView(view); });
+  }
+  // What is on screen now: the open turn's picked edits, the open file, open Story cards.
+  function renderShown() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('.turn-panel.active .edit:not(.file-hidden), .file-panel.active, details.story-code[open]'),
+      renderPending
+    );
+  }
+  // Markup the reader has not reached yet is carried in <template data-inert>
+  // (src/render/inert.mjs): parsed, but not styled, laid out or in the
+  // accessibility tree. activate() swaps a shell's own template for its
+  // content the first time that part is shown.
+  function activate(el) {
+    if (!el) return el;
+    for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.tagName === 'TEMPLATE' && c.hasAttribute('data-inert')) { c.replaceWith(c.content); break; }
+    }
+    return el;
+  }
+  function activateAll(container) {
+    var t;
+    while ((t = container.querySelector('template[data-inert]'))) t.replaceWith(t.content);
+  }
+  // A closed <details> carries its body inert: fill it before it opens (a
+  // summary click) or as it opens (script, keyboard), then render its code.
+  function openDetails(details) {
+    activate(details);
+    if (details.classList.contains('story-code')) renderPending(details);
+  }
+  document.addEventListener('click', function (e) {
+    var summary = e.target && e.target.closest ? e.target.closest('summary') : null;
+    if (summary && summary.parentNode && summary.parentNode.tagName === 'DETAILS' && !summary.parentNode.open) openDetails(summary.parentNode);
+  }, true);
+  document.addEventListener('toggle', function (e) {
+    var details = e.target;
+    if (details && details.open && details.tagName === 'DETAILS') openDetails(details);
+  }, true);
+  // Print shows every lens, panel and diff.
+  function renderAll() { activateAll(document); renderPending(document); }
+  window.addEventListener('beforeprint', renderAll);
+  if (window.matchMedia) {
+    var printQuery = window.matchMedia('print');
+    var onPrint = function (m) { if (m.matches) renderAll(); };
+    if (printQuery.addEventListener) printQuery.addEventListener('change', onPrint);
+    else if (printQuery.addListener) printQuery.addListener(onPrint);
+  }
+
+  // Generic master/detail wiring for clickable list items -> panels.
+  function wireList(itemSelector, panelSelector, itemKey, panelKey, onActivate, scope) {
+    var items = Array.prototype.slice.call(scope.querySelectorAll(itemSelector));
+    var panels = Array.prototype.slice.call(scope.querySelectorAll(panelSelector));
+    function select(key) {
+      items.forEach(function (item) {
+        var on = item.dataset[itemKey] === key;
+        item.classList.toggle('selected', on);
+        item.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      panels.forEach(function (panel) {
+        var on = panel.dataset[panelKey] === key;
+        if (on && !panel.classList.contains('active')) onActivate(activate(panel));
+        panel.classList.toggle('active', on);
+      });
+    }
+    items.forEach(function (item, i) {
+      item.style.setProperty('--i', i);
+      item.addEventListener('click', function () { select(item.dataset[itemKey]); });
+      item.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { select(item.dataset[itemKey]); e.preventDefault(); }
+      });
+    });
+    if (items.length > 0) select(items[0].dataset[itemKey]);
+    return { items: items, select: select };
+  }
+  // A turn panel's file filter: show one file's edits, all of them (''), or
+  // none (null) until the reader picks.
+  function filterPanelFiles(panel, file) {
+    panel.classList.toggle('no-pick', file === null);
+    Array.prototype.forEach.call(panel.querySelectorAll('.file-filter-btn'), function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.fileFilter === file));
+    });
+    Array.prototype.forEach.call(panel.querySelectorAll('.edit'), function (edit) {
+      var hidden = file === null || (!!file && edit.dataset.file !== file);
+      edit.classList.toggle('file-hidden', hidden);
+      if (!hidden) renderPending(edit);
+    });
+  }
+  // Delegated: file filter buttons only exist once their panel is activated.
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.file-filter-btn') : null;
+    if (btn) filterPanelFiles(btn.closest('.turn-panel'), btn.dataset.fileFilter);
+    var more = e.target && e.target.closest ? e.target.closest('.show-more') : null;
+    if (more) { activate(more.parentNode); more.remove(); }
+    var copyBtn = e.target && e.target.closest ? e.target.closest('.copy-btn') : null;
+    if (copyBtn) {
+      var scope = copyBtn.closest('.panel-prompt-wrap') || copyBtn.parentElement;
+      var target = scope ? scope.querySelector(copyBtn.dataset.copyTarget || '.panel-prompt') : null;
+      if (target && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(target.innerText || target.textContent || '').then(function () {
+          var original = copyBtn.textContent;
+          copyBtn.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+          setTimeout(function () {
+            copyBtn.textContent = original;
+            copyBtn.classList.remove('copied');
+          }, 1500);
+        });
+      }
+    }
+    var stepBtn = e.target && e.target.closest ? e.target.closest('.step-btn') : null;
+    if (stepBtn) stepTurn(Number(stepBtn.dataset.step));
+    var jump = e.target && e.target.closest ? e.target.closest('[data-jump-turn]') : null;
+    if (jump) {
+      var turnNum = jump.dataset.jumpTurn;
+      showLens('review');
+      if (turns) {
+        turns.select(turnNum);
+        var panel = document.querySelector('.turn-panel[data-turn-panel="' + turnNum + '"]');
+        if (panel) {
+          panel.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+          panel.classList.remove('flash');
+          void panel.offsetWidth;
+          panel.classList.add('flash');
+        }
+      }
+    }
+  });
+  // Hiding outside-project files must not leave a panel filtered to one of them.
+  var scopeToggle = document.querySelector('.opt-toggle[data-opt="scope"]');
+  if (scopeToggle) {
+    scopeToggle.addEventListener('click', function () {
+      if (root.classList.contains('show-outside')) return;
+      Array.prototype.forEach.call(document.querySelectorAll('.file-filter-btn[data-outside="1"][aria-pressed="true"]'), function (btn) {
+        filterPanelFiles(btn.closest('.turn-panel'), '');
+      });
+    });
+  }
+
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Each lens is wired the first time it is shown, after its markup is live.
+  var turns = null;
+  var fileTree = null;
+  var LENS_INIT = {
+    review: function (lens) {
+      // Every time a turn is opened its code starts hidden, until a file or
+      // "All changes" is picked.
+      turns = wireList('.timeline-item', '.turn-panel', 'turn', 'turnPanel', function (panel) {
+        filterPanelFiles(panel, null);
+        updateStepNav(lens, panel.dataset.turnPanel);
+      }, lens);
+    },
+    diff: function (lens) {
+      fileTree = wireList('.file-tree-item', '.file-panel', 'file', 'filePanel', renderPending, lens);
+      // Filter the Diff file tree by name. If the open file drops out, the
+      // first match opens instead, so the panel always belongs to a listed file.
+      var fileSearch = lens.querySelector('.file-search input');
+      if (!fileSearch) return;
+      var noMatch = lens.querySelector('.file-search-empty');
+      function listed(item) {
+        return !item.classList.contains('name-hidden') && (item.dataset.outside !== '1' || root.classList.contains('show-outside'));
+      }
+      function filterFiles() {
+        var q = fileSearch.value.trim().toLowerCase();
+        fileTree.items.forEach(function (item) {
+          item.classList.toggle('name-hidden', !!q && item.dataset.file.toLowerCase().indexOf(q) === -1);
+        });
+        var shown = fileTree.items.filter(listed);
+        if (noMatch) noMatch.hidden = shown.length > 0 || fileTree.items.length === 0;
+        var current = fileTree.items.filter(function (item) { return item.classList.contains('selected'); })[0];
+        if (shown.length > 0 && (!current || !listed(current))) fileTree.select(shown[0].dataset.file);
+      }
+      fileSearch.addEventListener('input', filterFiles);
+      if (scopeToggle) scopeToggle.addEventListener('click', filterFiles);
+      filterFiles();
+    },
+    story: function (lens) {
+      Array.prototype.forEach.call(lens.querySelectorAll('.story-card'), function (card, i) { card.style.setProperty('--i', i); });
+    },
+  };
+  // The floating step buttons follow whichever turn is open.
+  function updateStepNav(lens, key) {
+    var nav = lens.querySelector('.step-nav');
+    if (!nav || !turns) return;
+    var idx = turns.items.findIndex(function (i) { return i.dataset.turn === key; });
+    nav.querySelector('.step-pos').textContent = (idx + 1) + ' / ' + turns.items.length;
+    nav.querySelector('[data-step="-1"]').disabled = idx <= 0;
+    nav.querySelector('[data-step="1"]').disabled = idx >= turns.items.length - 1;
+  }
+  // Open the turn delta steps away, keep its timeline entry in view, and
+  // bring the panel's top back on screen if the reader had scrolled past it.
+  function stepTurn(delta) {
+    if (!turns) return;
+    var idx = turns.items.findIndex(function (i) { return i.classList.contains('selected'); });
+    var item = turns.items[idx + delta];
+    if (!item) return;
+    turns.select(item.dataset.turn);
+    var timeline = item.parentNode;
+    if (timeline.scrollHeight > timeline.clientHeight) {
+      var top = item.offsetTop - timeline.offsetTop;
+      if (top < timeline.scrollTop || top + item.offsetHeight > timeline.scrollTop + timeline.clientHeight) {
+        timeline.scrollTop = top - (timeline.clientHeight - item.offsetHeight) / 2;
+      }
+    }
+    var panel = document.querySelector('.turn-panel[data-turn-panel="' + item.dataset.turn + '"]');
+    if (panel && panel.getBoundingClientRect().top < 58) {
+      panel.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    }
+  }
+  function ensureLens(name) {
+    var lens = document.getElementById('lens-' + name);
+    if (!lens || lens.hasAttribute('data-ready')) return lens;
+    lens.setAttribute('data-ready', '');
+    activate(lens);
+    if (LENS_INIT[name]) LENS_INIT[name](lens);
+    return lens;
+  }
+
+  // Lens tabs, remembered in the URL hash.
+  var lensButtons = Array.prototype.slice.call(document.querySelectorAll('.lens-tab'));
+  var lensSections = Array.prototype.slice.call(document.querySelectorAll('.lens-section'));
+  function showLens(name) {
+    ensureLens(name);
+    lensButtons.forEach(function (b) {
+      var on = b.dataset.lens === name;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    lensSections.forEach(function (s) { s.classList.toggle('active', s.id === 'lens-' + name); });
+    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+  lensButtons.forEach(function (b, i) {
+    b.addEventListener('click', function () { showLens(b.dataset.lens); });
+    b.addEventListener('keydown', function (e) {
+      var delta = e.key === 'ArrowRight' ? 1 : (e.key === 'ArrowLeft' ? -1 : 0);
+      if (!delta) return;
+      var next = lensButtons[(i + delta + lensButtons.length) % lensButtons.length];
+      next.focus(); showLens(next.dataset.lens); e.preventDefault();
+    });
+  });
+  var initialLens = (location.hash || '#review').slice(1);
+  // The Trace view was folded into Report; old #trace links land there.
+  if (initialLens === 'trace') initialLens = 'report';
+  if (!document.getElementById('lens-' + initialLens)) initialLens = 'review';
+  showLens(initialLens);
+
+  // [ / ] cycle through lenses; j / k move between turns in the review lens.
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === '[' || e.key === ']') {
+      var activeIdx = lensButtons.findIndex(function (b) { return b.getAttribute('aria-selected') === 'true'; });
+      if (activeIdx !== -1) {
+        var step = e.key === ']' ? 1 : -1;
+        var target = lensButtons[(activeIdx + step + lensButtons.length) % lensButtons.length];
+        target.focus();
+        showLens(target.dataset.lens);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (!turns || !document.getElementById('lens-review').classList.contains('active')) return;
+    if (e.key === 'j') stepTurn(1);
+    if (e.key === 'k') stepTurn(-1);
+  });
+})();
+</script>
+</body>
+</html>

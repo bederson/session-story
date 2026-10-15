@@ -4,28 +4,32 @@ description: Generate a self-contained HTML "session story" that links each prom
 license: MIT
 metadata:
   version: "0.1.0"
+  author: nalaj
+  repository: https://github.com/nalaj/metafyl
 ---
 
 # Session Story
 
 Turn the current (or a named) Claude Code session transcript into one
 shareable HTML file: git tells you what changed, this tells you what
-happened. See `docs/superpowers/specs/2026-09-10-session-story-design.md`
-for the full design and the verified transcript record shapes this relies
-on.
+happened.
+
+`<skill-dir>` below is the directory that contains this SKILL.md (where the
+skill was installed). Run every command from the user's project directory,
+not from `<skill-dir>`, so the session is found by the project's cwd.
 
 ## When to use
 
 The user asks for a session recap, a changelog of what Claude did, a
 review artifact for a teammate, or literally "make a story of this
-session" / "/story".
+session" / "/session-story".
 
 ## Steps
 
 1. **Extract.** Run the CLI to pull the session transcript (and any
    subagent transcripts) into a Story IR JSON file:
    ```bash
-   node bin/story.mjs extract -o <scratch>/story.json --brief
+   node <skill-dir>/bin/story.mjs extract -o <scratch>/story.json --brief
    ```
    Use `--session <id>` for a specific session or omit it (defaults to
    `--latest`) for the current one. Pass `--cwd <dir>` if the project
@@ -97,13 +101,13 @@ session" / "/story".
 
 3. **Validate.**
    ```bash
-   node bin/story.mjs validate <scratch>/story.json --strict
+   node <skill-dir>/bin/story.mjs validate <scratch>/story.json --strict
    ```
    If this reports missing summaries or report fields, go back to step 2.
 
 4. **Render.**
    ```bash
-   node bin/story.mjs render <scratch>/story.json --open
+   node <skill-dir>/bin/story.mjs render <scratch>/story.json --open
    ```
    This writes a self-contained HTML file (no server, no dependencies)
    with four switchable views — Review (timeline + a summary of Claude’s
@@ -127,7 +131,7 @@ session" / "/story".
    switcher in that browser; the page stays on disk, and "Hidden (N)"
    brings it back. A session that is still running shows as Live and
    can't be hidden. Only when the user asks you to delete sessions for
-   real, run `node bin/story.mjs delete <session-id>...` (or `--all`). It
+   real, run `node <skill-dir>/bin/story.mjs delete <session-id>...` (or `--all`). It
    deletes their pages and rewrites the index; an id prefix of 4 or more
    characters is enough. It refuses a running session unless `--force`
    is passed, and `--all` keeps running sessions.
@@ -141,7 +145,7 @@ session" / "/story".
 6. **Optional: markdown.** If the user asks for a PR description or a
    handoff for a fresh session, run
    ```bash
-   node bin/story.mjs export <scratch>/story.json [--template handoff]
+   node <skill-dir>/bin/story.mjs export <scratch>/story.json [--template handoff]
    ```
    and give them the output (or pipe it to `pbcopy`). Every line comes
    from story.json; paste it as is and add no claims of your own. Files

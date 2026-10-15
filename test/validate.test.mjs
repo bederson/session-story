@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateStory } from '../src/ir/validate.mjs';
+import { validateStory } from '../session-story/src/ir/validate.mjs';
 
 function minimalStory(overrides = {}) {
   return {

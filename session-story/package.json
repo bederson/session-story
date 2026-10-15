@@ -1,0 +1,15 @@
+{
+  "name": "session-story",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shareable, self-contained HTML review artifact for a Claude Code session: prompts linked to the edits they caused.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Nenad Alajbegovic",
+  "bin": {
+    "story": "./bin/story.mjs"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}

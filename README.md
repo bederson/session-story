@@ -16,31 +16,41 @@ Session Story is a zero-dependency Node.js extraction and rendering pipeline for
 
 Git tells you what changed. This tells you what happened.
 
-```bash
-npx skills add <owner>/metafyl -g
-```
-
-An example is checked in at [`examples/story.html`](examples/story.html) — download it and open it in a browser (GitHub's preview won't run the page's JS).
+**[Start page](https://nalaj.github.io/metafyl/) · [Live example](https://nalaj.github.io/metafyl/example/index.html)**. The example is built from a synthetic demo session; the same page is checked in at [`examples/story.html`](examples/story.html).
 
 ## Quick start
 
 ### 1. Install
 
+For all your projects:
+
 ```bash
-npx skills add <owner>/metafyl -g
+npx -y skills add nalaj/metafyl --skill session-story --agent claude-code --global --copy --yes
 ```
 
-Or clone this repo and use `bin/story.mjs` directly. Requires Node.js 18.18+; zero npm runtime dependencies.
+For the current repository only, drop `--global`:
+
+```bash
+npx -y skills add nalaj/metafyl --skill session-story --agent claude-code --copy --yes
+```
+
+This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI. It copies only the [`session-story/`](session-story) folder into your agent's skills directory, so nothing goes to npm and there's nothing else to install. The installer needs Node.js 22.20+ (the `skills` CLI's own requirement); the skill itself runs on Node.js 18.18+ with zero npm runtime dependencies. To update, run the same command again. To remove it: `npx skills remove session-story`.
+
+`--agent` also accepts `codex`, `cursor`, `opencode` and others. The skill installs there too, but it reads **Claude Code** transcripts only (see Limits).
+
+Or clone this repo and run `node session-story/bin/story.mjs` directly.
 
 ### 2. Generate a story
 
-Inside Claude Code, once installed as a skill:
+Inside Claude Code, once installed:
 
 ```
-/story
+/session-story
 ```
 
-Claude extracts the current session, writes one-sentence summaries per turn, and opens the rendered page. See [`SKILL.md`](SKILL.md) for the exact flow.
+Or just ask: "make a story of this session for my teammate".
+
+Claude extracts the current session, writes one-sentence summaries per turn, and opens the rendered page. See [`session-story/SKILL.md`](session-story/SKILL.md) for the exact flow.
 
 ### 3. Review, hand off, or share
 
@@ -105,7 +115,7 @@ Two toggles in the nav apply across the views, and persist across visits:
 - **Four views, one file** — Review for you, Diff for a teammate, Story for a stakeholder, Report for anyone asking "so what actually happened, and where did the time and tokens go"; no server needed to view any of them.
 - **Zero runtime dependencies** — pure Node.js, inline CSS/JS, works over `file://`.
 - **Stays light on long sessions** — each distinct diff is carried once as data and rendered when you open it, and every view and turn you have not opened yet is carried inert, so a long session opens with a few thousand live elements instead of tens of thousands. The page needs JavaScript; printing renders everything.
-- **Typed IR, validated before render** — `story.json` follows [`schemas/story.schema.json`](schemas/story.schema.json); `validate` checks its shape and, in `--strict` mode, that every turn and the session have a summary.
+- **Typed IR, validated before render** — `story.json` follows [`session-story/schemas/story.schema.json`](session-story/schemas/story.schema.json); `validate` checks its shape and, in `--strict` mode, that every turn and the session have a summary.
 - **Honest about blind spots** — a tool call whose result never arrived is shown as "edit attempted, result unknown" instead of causing an error, and untracked shell edits are disclosed in the page header rather than silently dropped.
 
 ## How it works
@@ -117,18 +127,25 @@ Two toggles in the nav apply across the views, and persist across visits:
 | **Validate**  | Checks the IR's shape and, in `--strict` mode, that every turn, the session, and the report have their required fields filled in.                        |
 | **Render**    | Compiles the IR into one self-contained HTML file with inline CSS and JS — no external requests, no template step left undone.                           |
 
-Command-line equivalent of the full flow:
+Command-line equivalent of the full flow (from a clone; an installed skill lives at `~/.claude/skills/session-story/`):
 
 ```bash
-node bin/story.mjs extract [--session <id>|--latest] [--cwd <dir>] [--no-chain] -o story.json
-node bin/story.mjs validate story.json [--strict]
-node bin/story.mjs render story.json [--library <dir>|-o story.html|--no-library] [--open]
-node bin/story.mjs export story.json [--template pr|handoff] [-o out.md] [--all-files]
-node bin/story.mjs delete <session-id|id-prefix|file>... [--library <dir>]
-node bin/story.mjs delete --all [--library <dir>]
+node session-story/bin/story.mjs extract [--session <id>|--latest] [--cwd <dir>] [--no-chain] -o story.json
+node session-story/bin/story.mjs validate story.json [--strict]
+node session-story/bin/story.mjs render story.json [--library <dir>|-o story.html|--no-library] [--open]
+node session-story/bin/story.mjs export story.json [--template pr|handoff] [-o out.md] [--all-files]
+node session-story/bin/story.mjs delete <session-id|id-prefix|file>... [--library <dir>]
+node session-story/bin/story.mjs delete --all [--library <dir>]
 ```
 
 Run without any Claude-written summaries, `render` falls back to the first line of each prompt as the turn's label.
+
+## Privacy
+
+A story page holds your session word for word: prompts, Claude's replies, diffs, command lines and their errors. If a secret passed through the session, it can be in the page. Read the page before you share it.
+
+- The extractor reads only local files: the transcript under `~/.claude/projects/<slug>/` and, for shell-driven edits, `git` in your project. It makes no network requests, and the rendered page loads nothing remote.
+- Stories go to `.session-stories/` in your project. Add it to `.gitignore` unless you mean to commit them.
 
 ## Limits (v1)
 
@@ -140,18 +157,29 @@ Run without any Claude-written summaries, `render` falls back to the first line 
 
 ## Reference and scope
 
-- [Skill definition](SKILL.md) · [Schema](schemas/story.schema.json) · [Example output](examples/story.html)
-- Full design and the verified transcript record shapes this relies on: [`docs/superpowers/specs/2026-09-10-session-story-design.md`](docs/superpowers/specs/2026-09-10-session-story-design.md)
+- [Skill definition](session-story/SKILL.md) · [Schema](session-story/schemas/story.schema.json) · [Example output](examples/story.html) · [Changelog](CHANGELOG.md)
 
 Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG editing are intentionally outside the current scope.
+
+## Repository layout
+
+| Path | What it is |
+| --- | --- |
+| `session-story/` | **The skill**: exactly what `npx skills add` installs (`SKILL.md`, `bin/`, `src/`, `schemas/`) |
+| `test/` | `node --test` suite for the skill |
+| `scripts/` | Package smoke test, site build, and the synthetic demo session |
+| `site/` | GitHub Pages start page; `npm run build:site` adds the live example into `_site/` |
+| `examples/story.html` | Standalone example page, regenerated by `build:site` |
 
 ## Development
 
 ```bash
-npm test
+npm test            # unit + end-to-end tests
+npm run smoke       # installs only session-story/ into a temp dir and renders the demo from there
+npm run build:site  # builds _site/ and refreshes examples/story.html
 ```
 
-380 tests, `node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts).
+`node --test`, no test framework dependency. TDD throughout: `src/transcript/` (parsing + the Claude Code adapter), `src/ir/` (cross-indexing, dependency and git-state extraction, validation), `src/render/` (HTML generation, including the Report lens), `test/cli.test.mjs` (end-to-end: extract → validate → render against fixture transcripts). See [CONTRIBUTING.md](CONTRIBUTING.md) for the release steps.
 
 ## License
 
