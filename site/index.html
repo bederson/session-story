@@ -181,6 +181,8 @@ h2 { font: 400 clamp(28px, 3.6vw, 38px)/1.1 Newsreader, serif; letter-spacing: -
 .view .who { font: 12px/1.3 "JetBrains Mono", monospace; color: var(--ink-3); margin-bottom: 10px; }
 .view p { margin: 0; font-size: 15px; color: var(--ink-2); line-height: 1.5; }
 .example-link { display: inline-flex; margin-top: 22px; }
+.demo { margin: 0 0 18px; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); padding: 8px; }
+.demo img { display: block; width: 100%; height: auto; border-radius: 8px; }
 
 /* how */
 .steps { display: grid; grid-template-columns: repeat(4, 1fr); counter-reset: s; border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; background: var(--card); }
@@ -329,6 +331,7 @@ footer a { color: var(--ink-2); }
         </div>
       </div>
       <div class="body">
+        <figure class="demo"><img src="views.gif" alt="Switching between the Review, Diff, Story and Report views of a session story" width="960" height="600" loading="lazy" /></figure>
         <div class="views">
           <div class="view"><h3>Review</h3><div class="who">for you</div><p>A timeline of turns: the prompt, a one-sentence intent, Claude's answer, and the code behind it, with time and tokens for each turn.</p></div>
           <div class="view"><h3>Diff</h3><div class="who">for a code reviewer</div><p>A GitHub-style file tree and diff, with every hunk tagged with the turn that produced it.</p></div>
