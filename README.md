@@ -40,7 +40,7 @@ Git tells you what changed. This tells you what happened.
 
 ### 1. Install
 
-For all your projects:
+The installer needs Node.js 22.20+ (check with `node -v`). For all your projects:
 
 ```bash
 npx -y skills add nalaj/metafyl --skill session-story --agent claude-code --global --copy --yes
@@ -53,6 +53,12 @@ npx -y skills add nalaj/metafyl --skill session-story --agent claude-code --copy
 ```
 
 This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI. It copies only the [`session-story/`](session-story) folder into your agent's skills directory, so nothing goes to npm and there's nothing else to install. The installer needs Node.js 22.20+ (the `skills` CLI's own requirement); the skill itself runs on Node.js 18.18+ with zero npm runtime dependencies. To update, run the same command again. To remove it: `npx skills remove session-story`.
+
+On older Node, this fetches Node 22 for the install only and changes nothing else (tested on macOS; for a lasting fix, upgrade Node, e.g. `nvm install 22`):
+
+```bash
+npx -y -p node@22 -p skills -- skills add nalaj/metafyl --skill session-story --agent claude-code --global --copy --yes
+```
 
 Or clone this repo and run `node session-story/bin/story.mjs` directly.
 

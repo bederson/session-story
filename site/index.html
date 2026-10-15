@@ -153,6 +153,8 @@ h2 { font: 400 clamp(28px, 3.6vw, 38px)/1.1 Newsreader, serif; letter-spacing: -
   box-shadow: var(--shadow); overflow: hidden;
 }
 .cmd pre { margin: 0; padding: 18px 20px; flex: 1; overflow-x: auto; font-size: 14px; line-height: 1.6; }
+.cmd pre.wrap { white-space: pre-wrap; }
+.cmd pre .nowrap { white-space: nowrap; }
 .cmd pre .dim { color: color-mix(in srgb, var(--code-ink) 55%, transparent); }
 .copy {
   border: 0; border-left: 1px solid #ffffff1f; background: transparent; color: var(--code-ink);
@@ -271,7 +273,7 @@ footer a { color: var(--ink-2); }
         <div class="num">01</div>
         <div>
           <h2>Install the skill</h2>
-          <p>One command, through the open <code>skills</code> CLI. Nothing to publish or configure, and no npm dependencies at runtime. The installer needs Node.js 22.20+; the skill runs on 18.18+.</p>
+          <p>One command, through the open <code>skills</code> CLI. Nothing to publish or configure, and no npm dependencies at runtime. The installer needs Node.js 22.20+ (check with <code>node -v</code>); the skill runs on 18.18+.</p>
         </div>
       </div>
       <div class="body">
@@ -286,6 +288,11 @@ footer a { color: var(--ink-2); }
         <div class="cmd">
           <pre id="cmd"></pre>
           <button class="copy" type="button" data-copy-from="cmd">Copy</button>
+        </div>
+        <p class="note">On Node older than 22.20, this command fetches Node 22 for the install only and changes nothing else:</p>
+        <div class="cmd">
+          <pre id="cmd-old" class="wrap"></pre>
+          <button class="copy" type="button" data-copy-from="cmd-old">Copy</button>
         </div>
         <p class="note">Run the same command again to update. Remove it with <code>npx skills remove session-story</code>.</p>
       </div>
@@ -357,16 +364,25 @@ footer a { color: var(--ink-2); }
 (() => {
   const state = { scope: 'global' };
   const cmd = document.getElementById('cmd');
+  const cmdOld = document.getElementById('cmd-old');
 
   function render() {
     const parts = [
-      'npx -y skills add nalaj/metafyl',
+      'nalaj/metafyl',
       '--skill session-story',
       '--agent claude-code',
       ...(state.scope === 'global' ? ['--global'] : []),
       '--copy --yes',
     ];
-    cmd.textContent = parts.join(' ');
+    cmd.textContent = ['npx -y skills add', ...parts].join(' ');
+    // Wraps between words only, so a line never splits "claude-code".
+    const words = ['npx -y -p node@22 -p skills -- skills add', ...parts].join(' ').split(' ');
+    cmdOld.replaceChildren(...words.flatMap((part, i) => {
+      const span = document.createElement('span');
+      span.className = 'nowrap';
+      span.textContent = part;
+      return i ? [' ', span] : [span];
+    }));
   }
 
   function group(id, key) {
@@ -393,7 +409,9 @@ footer a { color: var(--ink-2); }
     btn.textContent = 'Copied';
     setTimeout(() => { btn.textContent = old; }, 1400);
   }
-  document.querySelector('[data-copy-from]').addEventListener('click', (e) => copy(cmd.textContent, e.currentTarget));
+  for (const b of document.querySelectorAll('[data-copy-from]')) {
+    b.addEventListener('click', () => copy(document.getElementById(b.dataset.copyFrom).textContent, b));
+  }
   for (const b of document.querySelectorAll('.copy2')) {
     b.addEventListener('click', () => copy(b.parentElement.querySelector('q').textContent, b));
   }

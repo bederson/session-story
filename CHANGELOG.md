@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Install docs: the Node.js 22.20+ installer requirement is stated up front, with a command for older Node that fetches Node 22 for the install only.
+
 ## 0.3.0
 
 - Install docs and the site now offer Claude Code only. The skill reads Claude Code transcripts alone, so Codex, Cursor and OpenCode are no longer listed; support for them is planned.
