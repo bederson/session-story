@@ -273,7 +273,7 @@ footer a { color: var(--ink-2); }
         <div class="num">01</div>
         <div>
           <h2>Install the skill</h2>
-          <p>One command, through the open <code>skills</code> CLI. Nothing to publish or configure, and no npm dependencies at runtime. The installer needs Node.js 22.20+ (check with <code>node -v</code>); the skill runs on 18.18+.</p>
+          <p>One command, through the open <code>skills</code> CLI or as a Claude Code plugin. Nothing to publish or configure, and no npm dependencies at runtime. The <code>skills</code> installer needs Node.js 22.20+ (check with <code>node -v</code>); the skill runs on 18.18+.</p>
         </div>
       </div>
       <div class="body">
@@ -295,6 +295,12 @@ footer a { color: var(--ink-2); }
           <button class="copy" type="button" data-copy-from="cmd-old">Copy</button>
         </div>
         <p class="note">Run the same command again to update. Remove it with <code>npx skills remove session-story</code>.</p>
+        <p class="note">Or install it as a Claude Code plugin. Run this inside Claude Code (2.1.275 or later):</p>
+        <div class="cmd">
+          <pre id="cmd-plugin">/plugin install session-story --marketplace nalaj/session-story</pre>
+          <button class="copy" type="button" data-copy-from="cmd-plugin">Copy</button>
+        </div>
+        <p class="note">On older versions, run <code>/plugin marketplace add nalaj/session-story</code>, then <code>/plugin install session-story@session-story</code>. As a plugin, the command is <code>/session-story:session-story</code>. Update with <code>/plugin marketplace update session-story</code>.</p>
       </div>
     </section>
 
