@@ -12,7 +12,7 @@ Session Story is a zero-dependency Node.js extraction and rendering pipeline for
 ![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
 ![Agent Skill](https://img.shields.io/badge/Agent-Skill-7C3AED?style=flat-square)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.18-339933?style=flat-square)
-![Version](https://img.shields.io/badge/version-0.1.0-0891b2?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.2.0-0891b2?style=flat-square)
 
 Git tells you what changed. This tells you what happened.
 

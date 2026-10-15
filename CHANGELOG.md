@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Active time: the header and Report show time without idle gaps over five minutes next to wall-clock time.
+- Cache breaks: turns that re-sent over 100k input tokens past the prompt cache are counted per turn, in "Where it went", and in the Usage group, next to the share of input read from cache.
+- Skills per turn: Skill calls and skill slash commands show as chips in Review and Story, and in the brief.
+- Subagents from the legacy `Task` tool are recognised, typed from their `subagent_type` when there is no meta file.
+- Token usage: a streamed API call keeps its largest output count, and calls a subagent transcript replays from the main session are no longer counted twice.
+
 ## 0.1.0 — first public release
 
 - `session-story` skill: extract → summarize → validate → render a Claude Code session into one self-contained HTML page with Review, Diff, Story and Report views.
