@@ -2,7 +2,7 @@
   "name": "metafyl",
   "version": "0.1.0",
   "private": true,
-  "description": "Session Story: an agent skill that turns a Claude Code session into one shareable, self-contained HTML review page.",
+  "description": "Session Story: an agent skill that turns a Claude Code session into one shareable HTML page, every prompt linked to the edits it caused.",
   "type": "module",
   "license": "MIT",
   "author": "Nenad Alajbegovic",
