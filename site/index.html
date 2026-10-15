@@ -92,6 +92,7 @@ h1 em::after {
 }
 @keyframes swipe { from { transform: scaleX(0); } }
 .lede { font-size: 19px; color: var(--ink-2); max-width: 34em; margin: 0 0 30px; }
+.sub { font-size: 15px; color: var(--ink-3); max-width: 38em; margin: -14px 0 28px; padding-left: 12px; border-left: 2px solid var(--rule); }
 .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px;
@@ -235,6 +236,7 @@ footer a { color: var(--ink-2); }
         <div class="kicker">An agent skill for Claude Code</div>
         <h1>Git tells you what changed. This tells you what <em>happened</em>.</h1>
         <p class="lede">Session Story: an agent skill that turns a Claude Code session into one shareable HTML page, every prompt linked to the edits it caused. The commands that ran, the tests that failed and how it all ended are there too. Hand it to a reviewer, a teammate or a stakeholder.</p>
+        <p class="sub">Generate a self-contained HTML "session story" that links each prompt in a vibe coding session to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative.</p>
         <div class="ctas">
           <a class="btn primary" href="#install">Install the skill</a>
           <a class="btn ghost" href="example/index.html">Open a live example →</a>

@@ -1,6 +1,6 @@
 # Session Story
 
-**Turn a Claude Code session transcript into one shareable, self-contained HTML file — directly in chat.**
+**Generate a self-contained HTML "session story" that links each prompt in a vibe coding session to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative.**
 
 Session Story is a zero-dependency Node.js extraction and rendering pipeline for Claude Code. It parses the session transcript into typed JSON IR, cross-indexes prompts to the edits they caused, and deterministically compiles that into one HTML file with inline CSS and JS.
 

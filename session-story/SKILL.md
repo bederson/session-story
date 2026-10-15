@@ -1,6 +1,6 @@
 ---
 name: session-story
-description: Generate a self-contained HTML "session story" that links each prompt in a Claude Code session to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative. Use when the user asks for a session recap, changelog, review artifact, "what did Claude change", or wants to share a summary of a Claude Code session with a teammate or stakeholder.
+description: Generate a self-contained HTML "session story" that links each prompt in a vibe coding session to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative. Use when the user asks for a session recap, changelog, review artifact, "what did Claude change", or wants to share a summary of a Claude Code session with a teammate or stakeholder.
 license: MIT
 metadata:
   version: "0.1.0"
