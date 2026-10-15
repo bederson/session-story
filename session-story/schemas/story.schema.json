@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/nalaj/metafyl/session-story/schemas/story.schema.json",
+  "$id": "https://github.com/nalaj/session-story/session-story/schemas/story.schema.json",
   "title": "Story IR",
   "description": "Documents the shape of story.json for humans and external tooling. src/ir/validate.mjs implements the same checks by hand (this project has zero npm runtime dependencies, so no JSON Schema engine is used at runtime).",
   "type": "object",

@@ -5,7 +5,7 @@ Issues and pull requests are welcome.
 ## Setup
 
 ```bash
-git clone https://github.com/nalaj/metafyl && cd metafyl
+git clone https://github.com/nalaj/session-story && cd session-story
 npm test          # no install step; there are no dependencies
 npm run smoke     # proves session-story/ works on its own, as installed
 ```

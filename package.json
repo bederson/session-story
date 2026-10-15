@@ -9,10 +9,10 @@
   "homepage": "https://nalaj.github.io/metafyl/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nalaj/metafyl.git"
+    "url": "git+https://github.com/nalaj/session-story.git"
   },
   "bugs": {
-    "url": "https://github.com/nalaj/metafyl/issues"
+    "url": "https://github.com/nalaj/session-story/issues"
   },
   "keywords": ["claude-code", "agent-skill", "skills", "session-replay", "code-review"],
   "scripts": {

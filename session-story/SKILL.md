@@ -5,7 +5,7 @@ license: MIT
 metadata:
   version: "0.3.1"
   author: nalaj
-  repository: https://github.com/nalaj/metafyl
+  repository: https://github.com/nalaj/session-story
 ---
 
 # Session Story
