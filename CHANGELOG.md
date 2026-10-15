@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Install docs and the site now offer Claude Code only. The skill reads Claude Code transcripts alone, so Codex, Cursor and OpenCode are no longer listed; support for them is planned.
+- Start page header shows `/session-story` and uses the Metafyl mark as its favicon.
+- README gains the logo and a hero screenshot.
+
 ## 0.2.0
 
 - Active time: the header and Report show time without idle gaps over five minutes next to wall-clock time.
