@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Installable as a Claude Code plugin: the repository is a plugin marketplace (`.claude-plugin/marketplace.json`). Run `/plugin marketplace add nalaj/session-story`, then `/plugin install session-story@session-story`.
+- Releases check that the marketplace's plugin version matches the skill's version.
+- README logo reads "Session Story" in Figtree, replacing the Metafyl wordmark.
+- Leftover Metafyl names are gone: stories record `session-story` as their generator, and the logo files under `docs/assets/` are renamed.
+
 ## 0.3.1
 
 - Install docs: the Node.js 22.20+ installer requirement is stated up front, with a command for older Node that fetches Node 22 for the install only.

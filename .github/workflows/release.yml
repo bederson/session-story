@@ -23,8 +23,9 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./session-story/package.json').version")"
           skill="$(sed -n 's/^  version: "\(.*\)"$/\1/p' session-story/SKILL.md)"
-          if [ "$tag" != "$pkg" ] || [ "$tag" != "$skill" ]; then
-            echo "::error::tag v$tag, session-story/package.json $pkg and SKILL.md $skill must match"
+          market="$(node -p "require('./.claude-plugin/marketplace.json').plugins.find(p => p.name === 'session-story').version")"
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$skill" ] || [ "$tag" != "$market" ]; then
+            echo "::error::tag v$tag, session-story/package.json $pkg, SKILL.md $skill and marketplace.json $market must match"
             exit 1
           fi
       - uses: softprops/action-gh-release@v3

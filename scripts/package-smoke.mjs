@@ -32,6 +32,11 @@ const skillVersion = skill.match(/^\s+version:\s*"([^"]+)"/m)?.[1];
 if (!/^name: session-story$/m.test(skill)) throw new Error('SKILL.md name must be session-story');
 if (skillVersion !== pkg.version) throw new Error(`SKILL.md version ${skillVersion} != package.json ${pkg.version}`);
 
+const marketplace = JSON.parse(await fs.readFile(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8'));
+const plugin = marketplace.plugins.find((p) => p.name === 'session-story');
+if (plugin?.source !== './session-story') throw new Error('marketplace.json must list session-story with source ./session-story');
+if (plugin.version !== pkg.version) throw new Error(`marketplace.json version ${plugin.version} != package.json ${pkg.version}`);
+
 const out = path.join(tmp, 'story.html');
 await renderDemo({ bin: path.join(installed, 'bin', 'story.mjs'), out });
 const html = await fs.readFile(out, 'utf8');

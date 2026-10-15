@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/metafyl-lockup-dark.svg" />
-    <img src="docs/assets/metafyl-lockup-light.svg" alt="Metafyl" width="394" height="120" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/session-story-lockup-dark.svg" />
+    <img src="docs/assets/session-story-lockup-light.svg" alt="Session Story" width="621" height="120" />
   </picture>
 </p>
 <h3 align="center">Stop guessing what your AI changed. See the whole story.</h3>
 
-<p align="center"><img src="docs/assets/metafyl-readme-hero.png" alt="A session story: each prompt in the session next to the code changes it led to" width="960" /></p>
+<p align="center"><img src="docs/assets/session-story-readme-hero.png" alt="A session story: each prompt in the session next to the code changes it led to" width="960" /></p>
 
 <p align="center">
   <a href="https://nalaj.github.io/session-story/"><strong>Start page</strong></a> &nbsp;·&nbsp;
@@ -18,7 +18,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/Agent-Skill-7C3AED?style=flat-square" alt="Agent Skill" />
   <img src="https://img.shields.io/badge/node-%3E%3D18.18-339933?style=flat-square" alt="Node 18.18 or later" />
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.3.1-0891b2?style=flat-square" alt="Version 0.3.1" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-0891b2?style=flat-square" alt="Version 0.4.0" /></a>
 </p>
 
 ## Session Story
@@ -59,6 +59,15 @@ On older Node, this fetches Node 22 for the install only and changes nothing els
 ```bash
 npx -y -p node@22 -p skills -- skills add nalaj/session-story --skill session-story --agent claude-code --global --copy --yes
 ```
+
+**As a Claude Code plugin.** This repository is also a plugin marketplace. Inside Claude Code, run:
+
+```text
+/plugin marketplace add nalaj/session-story
+/plugin install session-story@session-story
+```
+
+On Claude Code 2.1.275 or later, one line does both: `/plugin install session-story --marketplace nalaj/session-story`. This needs no `npx`, and Claude Code installs only the `session-story/` folder. As a plugin, the skill's command is `/session-story:session-story`. To update, run `/plugin marketplace update session-story`.
 
 Or clone this repo and run `node session-story/bin/story.mjs` directly.
 
