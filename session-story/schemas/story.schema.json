@@ -85,6 +85,14 @@
           "type": "integer",
           "minimum": 0
         },
+        "active_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Time the session was active: the gaps between record timestamps (main thread and subagents) with any gap over 5 minutes left out. null with fewer than two dated records; absent in stories extracted before it was recorded."
+        },
         "summary": {
           "type": "string",
           "maxLength": 240,
@@ -303,6 +311,13 @@
               }
             }
           },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills loaded in this turn, in first-use order: Skill tool calls (also inside the subagents it spawned) and slash commands that loaded a skill. A slash command does not start a turn, so its skill lands on the turn its work is credited to."
+          },
           "edits": {
             "type": "array",
             "items": {
@@ -506,7 +521,7 @@
               "object",
               "null"
             ],
-            "description": "Token usage of this turn's API calls in the main transcript, counted once per message.id (one assistant record per content block repeats the same usage). null when the turn had no assistant records.",
+            "description": "Token usage of this turn's API calls in the main transcript, counted once per message.id (one assistant record per content block repeats the usage; the largest output count is kept). null when the turn had no assistant records.",
             "properties": {
               "input_tokens": {
                 "type": "integer"
@@ -522,6 +537,10 @@
               },
               "api_calls": {
                 "type": "integer"
+              },
+              "cache_breaks": {
+                "type": "integer",
+                "description": "API calls that sent over 100k input tokens without reading them from the prompt cache (input_tokens + cache_creation_input_tokens)."
               },
               "models": {
                 "type": "array",
@@ -939,7 +958,8 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "The subagent's type, from its .meta.json or else the subagent_type its Agent (or legacy Task) call asked for."
               },
               "ended_source": {
                 "type": [
@@ -1084,6 +1104,13 @@
                 "integer",
                 "null"
               ]
+            },
+            "active_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "session.active_ms, capped at duration_ms; null when the story did not record it."
             },
             "turns": {
               "type": "integer"
@@ -1306,6 +1333,20 @@
                   }
                 }
               }
+            },
+            "cache_read_share": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "cache_read_tokens over all input tokens (uncached, cache read and cache write), 3 decimals; null when any part is unknown or the total is 0."
+            },
+            "cache_breaks": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Cache breaks across all turns and subagents, counted from the transcript even when the token totals come from cost-state records; null when no usage recorded the count."
             }
           }
         },
@@ -1366,6 +1407,13 @@
                   "null"
                 ]
               },
+              "cache_breaks": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Cache breaks in this turn's main thread plus the subagents it spawned; null when neither recorded the count."
+              },
               "complete": {
                 "type": [
                   "boolean",
@@ -1405,6 +1453,12 @@
                     ]
                   },
                   "cache_creation_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "cache_breaks": {
                     "type": [
                       "integer",
                       "null"

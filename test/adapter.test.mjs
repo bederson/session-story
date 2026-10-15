@@ -648,7 +648,7 @@ test('each turn carries its deduped usage, and the story its environment', () =>
     { type: 'user', uuid: 'u3', timestamp: '2026-10-08T10:02:00.000Z', message: { role: 'user', content: 'unanswered' } },
   ];
   const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
-  assert.deepEqual(story.turns[0].usage, { input_tokens: 10, output_tokens: 5, cache_read_tokens: 200, cache_creation_tokens: 100, api_calls: 1, models: ['claude-opus-5-5'], complete: true });
+  assert.deepEqual(story.turns[0].usage, { input_tokens: 10, output_tokens: 5, cache_read_tokens: 200, cache_creation_tokens: 100, api_calls: 1, cache_breaks: 0, models: ['claude-opus-5-5'], complete: true });
   assert.equal(story.turns[1].usage.models[0], 'claude-haiku-4-5-20251001');
   assert.equal(story.turns[2].usage, null);
   assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: '2.1.289' }, models: ['claude-haiku-4-5-20251001', 'claude-opus-5-5'] });
@@ -727,7 +727,7 @@ test('an async Agent becomes a subagent event closed by its task notification, w
   assert.deepEqual(story.environment.models, ['claude-opus-5-5']);
 });
 
-test('subagents passed as plain record arrays still work (no meta)', () => {
+test('subagents passed as plain record arrays still work, typed from the Agent call (no meta)', () => {
   const records = [
     { type: 'user', uuid: 'u1', timestamp: '2026-10-08T10:00:00.000Z', message: { role: 'user', content: 'go' } },
     agentLaunch({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', description: 'Explore IR' }),
@@ -735,7 +735,7 @@ test('subagents passed as plain record arrays still work (no meta)', () => {
   ];
   const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: SUB_RECORDS } });
   const agent = story.trace.events.find((e) => e.id === 'tu1');
-  assert.equal(agent.agent_type, null);
+  assert.equal(agent.agent_type, 'Explore');
   assert.equal(agent.status, 'unknown');
   assert.equal(agent.ended_at, '2026-10-08T10:00:04.400Z');
   assert.equal(agent.ended_source, 'subagent_transcript');
@@ -817,4 +817,88 @@ test("keeps Claude's text replies on the turn, in order, skipping thinking, empt
     { at: '2026-09-10T10:00:03.000Z', text: 'Done. The prop is added.' },
   ]);
   assert.deepEqual(story.turns[1].replies, []);
+});
+
+const prompt = (uuid, ts, content) => ({ type: 'user', uuid, timestamp: ts, message: { role: 'user', content } });
+const skillBody = (uuid, ts, name) => ({
+  type: 'user', uuid, timestamp: ts, isMeta: true,
+  message: { role: 'user', content: [{ type: 'text', text: `Base directory for this skill: /skills/${name}\n\n# ${name}` }] },
+});
+
+test('a turn lists the skills it loaded through the Skill tool and through slash commands, not built-in commands', () => {
+  const records = [
+    prompt('u1', '2026-10-08T10:00:00.000Z', 'plan the feature'),
+    assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Skill', input: { skill: 'superpowers:brainstorming' } }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:02.000Z', toolUseId: 'tu1', content: 'loaded' }),
+    assistantTool({ uuid: 'a2', ts: '2026-10-08T10:00:03.000Z', id: 'tu2', name: 'Skill', input: { skill: 'superpowers:brainstorming' } }),
+    prompt('u2', '2026-10-08T10:01:00.000Z', '<command-message>session-story</command-message>\n<command-name>/session-story</command-name>\n<command-args>for the team</command-args>'),
+    skillBody('m2', '2026-10-08T10:01:00.100Z', 'session-story'),
+    prompt('u3', '2026-10-08T10:02:00.000Z', 'thanks'),
+    prompt('c3', '2026-10-08T10:02:30.000Z', '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>'),
+    prompt('o3', '2026-10-08T10:02:30.100Z', '<local-command-stdout>Set model to Opus</local-command-stdout>'),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  // A slash command is not a turn of its own (its tags are stripped), so its
+  // skill lands on the turn its work is credited to.
+  assert.deepEqual(story.turns.map((t) => t.skills), [['superpowers:brainstorming', 'session-story'], []]);
+});
+
+test('a slash-command skill run without arguments is listed on the turn its work lands in', () => {
+  const records = [
+    prompt('u1', '2026-10-08T10:00:00.000Z', 'fix it'),
+    prompt('c1', '2026-10-08T10:05:00.000Z', '<command-message>session-story</command-message>\n<command-name>/session-story</command-name>'),
+    skillBody('m1', '2026-10-08T10:05:00.100Z', 'session-story'),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj' });
+  assert.equal(story.turns.length, 1);
+  assert.deepEqual(story.turns[0].skills, ['session-story']);
+});
+
+test('a legacy Task call is a subagent typed from its subagent_type, and its Skill calls land on the spawning turn', () => {
+  const sub = [
+    { type: 'user', uuid: 'su1', isSidechain: true, timestamp: '2026-10-08T10:00:03.000Z', message: { role: 'user', content: 'look' } },
+    { type: 'assistant', uuid: 'sa1', isSidechain: true, timestamp: '2026-10-08T10:00:04.000Z',
+      message: { id: 'sm1', role: 'assistant', usage: { input_tokens: 5, output_tokens: 7 }, content: [{ type: 'tool_use', id: 'stu1', name: 'Skill', input: { skill: 'frontend-design' } }] } },
+  ];
+  const records = [
+    prompt('u1', '2026-10-08T10:00:00.000Z', 'go'),
+    assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Task', input: { description: 'Look around', prompt: 'p', subagent_type: 'general-purpose' } }),
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:05.000Z', toolUseId: 'tu1', content: { agentId: 'ag1', status: 'completed' } }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: sub } });
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(agent.kind, 'subagent');
+  assert.equal(agent.agent_type, 'general-purpose');
+  assert.equal(agent.summary, 'Look around');
+  assert.equal(agent.usage.output_tokens, 7);
+  assert.deepEqual(story.turns[0].skills, ['frontend-design']);
+});
+
+test('a subagent transcript that replays a main-thread API call does not count its usage twice', () => {
+  const replayed = { type: 'assistant', uuid: 'sa0', isSidechain: true, timestamp: '2026-10-08T10:00:02.500Z',
+    message: { id: 'msg_main', role: 'assistant', usage: { input_tokens: 9, output_tokens: 100 }, content: [{ type: 'text', text: 'earlier' }] } };
+  const records = [
+    prompt('u1', '2026-10-08T10:00:00.000Z', 'go'),
+    { ...assistantTool({ uuid: 'a1', ts: '2026-10-08T10:00:01.000Z', id: 'tu1', name: 'Agent', input: { description: 'd', prompt: 'p' } }),
+      message: { id: 'msg_main', role: 'assistant', usage: { input_tokens: 9, output_tokens: 100 }, content: [{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { description: 'd', prompt: 'p' } }] } },
+    userRecord({ uuid: 'r1', ts: '2026-10-08T10:00:05.000Z', toolUseId: 'tu1', content: { agentId: 'ag1', status: 'completed' } }),
+  ];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: [replayed, ...SUB_RECORDS.slice(1)] } });
+  const agent = story.trace.events.find((e) => e.id === 'tu1');
+  assert.equal(story.turns[0].usage.output_tokens, 100);
+  assert.equal(agent.usage.output_tokens, 7);
+  assert.equal(agent.usage.api_calls, 1);
+});
+
+test('session.active_ms leaves out idle gaps over five minutes and counts subagent records', () => {
+  const records = [
+    prompt('u1', '2026-10-08T10:00:00.000Z', 'go'),
+    { type: 'assistant', uuid: 'a1', timestamp: '2026-10-08T10:02:00.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } },
+    prompt('u2', '2026-10-08T12:00:00.000Z', 'again'),
+    { type: 'assistant', uuid: 'a2', timestamp: '2026-10-08T12:01:00.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } },
+  ];
+  const sub = [{ type: 'assistant', uuid: 's1', timestamp: '2026-10-08T12:04:00.000Z', message: { role: 'assistant', content: [] } }];
+  const story = buildStory(records, { sessionId: 's1', cwd: '/proj', subagents: { ag1: { records: sub, meta: null } } });
+  assert.equal(story.session.duration_ms, 2 * 3600000 + 60000);
+  assert.equal(story.session.active_ms, 2 * 60000 + 4 * 60000);
 });

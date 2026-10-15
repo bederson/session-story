@@ -9,7 +9,7 @@ import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
 import {
   newEvent, finishEvent, resultStatus, eventSummary, sortEvents, turnDuration,
-  newUsageAcc, noteUsage, usageTotals, pickCostState, parseTaskNotifications, msBetween,
+  newUsageAcc, noteUsage, usageTotals, pickCostState, parseTaskNotifications, msBetween, activeMs,
 } from '../ir/trace.mjs';
 
 // Wrapper tags the harness injects into user-role records. None of this text
@@ -33,7 +33,13 @@ const SYNTHETIC_BLOCK = new RegExp(`<(${TAG_ALTERNATION})>[\\s\\S]*?</\\1>`, 'g'
 const SYNTHETIC_TAIL = new RegExp(`<(${TAG_ALTERNATION})>[\\s\\S]*$`);
 
 const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
-const AGENT_TOOL = 'Agent';
+// Older Claude Code versions named the subagent tool `Task`.
+const AGENT_TOOLS = new Set(['Agent', 'Task']);
+const SKILL_TOOL = 'Skill';
+// A slash command that loads a skill is followed by a meta record carrying
+// the skill's text; a built-in command (/model, /clear) is not.
+const SKILL_BODY_PREFIX = 'Base directory for this skill';
+const COMMAND_NAME = /<command-name>\/?([^<]+)<\/command-name>/;
 // Bash results carry no diff, so a shell-driven change cannot be read out
 // of the transcript. The commands are kept per turn anyway: git can supply
 // the diff later, and the commands say which turn to credit it to
@@ -120,7 +126,37 @@ function agentToolUseCalls(record) {
   if (record.type !== 'assistant') return [];
   const content = record.message && record.message.content;
   if (!Array.isArray(content)) return [];
-  return content.filter((block) => block.type === 'tool_use' && block.name === AGENT_TOOL);
+  return content.filter((block) => block.type === 'tool_use' && AGENT_TOOLS.has(block.name));
+}
+
+/** The skill a Skill tool_use loaded, or null for any other block. */
+function skillName(block) {
+  if (block.name !== SKILL_TOOL || !block.input || typeof block.input.skill !== 'string') return null;
+  return block.input.skill.trim() || null;
+}
+
+/** Add a skill to a turn's list once, in first-use order. */
+function addSkill(turn, name) {
+  if (turn && name && !turn.skills.includes(name)) turn.skills.push(name);
+}
+
+/** The slash command a user record ran (without its slash), or null. */
+function commandName(record) {
+  if (record.type !== 'user' || record.isMeta) return null;
+  const content = record.message && record.message.content;
+  if (typeof content !== 'string') return null;
+  const match = COMMAND_NAME.exec(content);
+  return match ? match[1].trim() || null : null;
+}
+
+/** True for the meta record that carries a loaded skill's text. */
+function isSkillBody(record) {
+  if (record.type !== 'user' || !record.isMeta) return false;
+  const content = record.message && record.message.content;
+  const text = typeof content === 'string'
+    ? content
+    : (Array.isArray(content) && content[0] && content[0].type === 'text' ? content[0].text : '');
+  return typeof text === 'string' && text.startsWith(SKILL_BODY_PREFIX);
 }
 
 /** The last `limit` characters of a result's text, or '' when there is none. */
@@ -190,8 +226,9 @@ function pushError(turnRef, { id, tool, at, toolUseResult, block, target }) {
  * sequence, all attributed to the turn that spawned it). Its tool events
  * point at the Agent tool_use that launched it through `parent_id`.
  */
-function extractSubagent(subRecords, cwd, agentId, { parentId = null, turnIndex = null } = {}) {
+function extractSubagent(subRecords, cwd, agentId, { parentId = null, turnIndex = null, mainMessageIds = null } = {}) {
   const edits = [];
+  const skills = [];
   const bash = [];
   const errors = [];
   const events = [];
@@ -205,8 +242,12 @@ function extractSubagent(subRecords, cwd, agentId, { parentId = null, turnIndex 
   const errorSink = { errors };
 
   for (const record of subRecords) {
-    noteUsage(usage, record);
+    // A forked subagent's transcript can replay main-thread records; their
+    // usage is already counted on the turn.
+    noteUsage(usage, record, mainMessageIds);
     for (const block of allToolUseCalls(record)) {
+      const skill = skillName(block);
+      if (skill && !skills.includes(skill)) skills.push(skill);
       pendingAny.set(block.id, { name: block.name, input: block.input });
       const command = block.name === BASH_TOOL ? ((block.input && block.input.command) || '') : null;
       const event = newEvent({
@@ -285,7 +326,7 @@ function extractSubagent(subRecords, cwd, agentId, { parentId = null, turnIndex 
     }
   }
 
-  return { edits, bash, errors, events, usage: usageTotals(usage), last_at: latestTimestamp(subRecords, null) };
+  return { edits, bash, errors, events, skills, usage: usageTotals(usage), last_at: latestTimestamp(subRecords, null) };
 }
 
 function toolResultFor(record) {
@@ -400,6 +441,15 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const models = new Set();
   let version = null;
   let currentTurn = null;
+  // A slash command waiting for its skill text, which says it loaded a skill.
+  let pendingCommand = null;
+  // Every main-thread API call, so a subagent replaying one is not counted twice.
+  const mainMessageIds = new Set();
+  for (const record of records) {
+    if (record.type === 'assistant' && record.message && typeof record.message.id === 'string') {
+      mainMessageIds.add(record.message.id);
+    }
+  }
 
   function noteEnd(event) {
     if (!event.ended_at) return;
@@ -481,6 +531,15 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       continue;
     }
 
+    if (isSkillBody(record)) {
+      if (pendingCommand) addSkill(currentTurn, pendingCommand);
+      pendingCommand = null;
+      continue;
+    }
+    if (record.type === 'user' && !record.isMeta && typeof (record.message && record.message.content) === 'string') {
+      pendingCommand = commandName(record);
+    }
+
     if (isRealUserPrompt(record)) {
       closeTurn(currentTurn);
       currentTurn = {
@@ -493,6 +552,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
         edits: [],
         bash: [],
         errors: [],
+        skills: [],
         plan: null,
         duration_ms: null,
         duration_source: 'unknown',
@@ -513,11 +573,12 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
 
     for (const block of allToolUseCalls(record)) {
       if (!currentTurn) continue;
+      addSkill(currentTurn, skillName(block));
       pendingAny.set(block.id, { name: block.name, input: block.input, turnRef: currentTurn });
       const command = block.name === BASH_TOOL ? ((block.input && block.input.command) || '') : null;
       const event = newEvent({
         id: block.id,
-        kind: block.name === AGENT_TOOL ? 'subagent' : 'tool',
+        kind: AGENT_TOOLS.has(block.name) ? 'subagent' : 'tool',
         turn: currentTurn.index,
         tool: block.name,
         category: command === null ? null : classifyCommand(command),
@@ -572,8 +633,9 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     if (event) {
       const r = toolResult.result;
       if (event.kind === 'subagent') {
+        const spawn = pendingAny.get(toolResult.toolUseId);
         event.agent_id = (r && typeof r === 'object' && r.agentId) || null;
-        event.agent_type = null;
+        event.agent_type = requestedAgentType(spawn);
         event.usage = null;
         event.ended_source = null;
         if (r && typeof r === 'object' && r.isAsync) {
@@ -622,15 +684,17 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       const sub = extractSubagent(subRecords, cwd, agentId, {
         parentId: toolResult.toolUseId,
         turnIndex: spawningTurn.index,
+        mainMessageIds,
       });
       spawningTurn.edits.push(...sub.edits);
+      for (const skill of sub.skills) addSkill(spawningTurn, skill);
       spawningTurn.bash.push(...sub.bash);
       spawningTurn.errors.push(...sub.errors);
       events.push(...sub.events);
       for (const child of sub.events) noteEnd(child);
       for (const model of (sub.usage && sub.usage.models) || []) models.add(model);
       if (event && event.kind === 'subagent') {
-        event.agent_type = (meta && meta.agentType) || null;
+        event.agent_type = (meta && meta.agentType) || requestedAgentType(info);
         event.usage = sub.usage;
         // Until a notification says otherwise, the agent ran at least until
         // its own transcript's last record.
@@ -679,6 +743,10 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
   const durationMs = startedAt && endedAt
     ? new Date(endedAt).getTime() - new Date(startedAt).getTime()
     : 0;
+  const startMs = startedAt ? Date.parse(startedAt) : NaN;
+  const stamps = [records, ...Object.values(subagents || {}).map((e) => (Array.isArray(e) ? e : (e && e.records) || []))]
+    .flatMap((list) => list.map((r) => r.timestamp))
+    .filter((t) => typeof t === 'string' && !(Date.parse(t) < startMs));
 
   return {
     schema_version: 1,
@@ -691,6 +759,7 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
       started_at: startedAt,
       ended_at: endedAt,
       duration_ms: durationMs,
+      active_ms: activeMs(stamps),
     },
     turns,
     files: crossIndexFiles(turns),
@@ -706,6 +775,12 @@ export function buildStory(records, { sessionId, cwd, subagents } = {}) {
     trace: { events: sortEvents(events), cost_states: costStates },
     environment: { agent: { name: 'Claude Code', version }, models: [...models].sort() },
   };
+}
+
+/** The subagent_type an Agent call asked for, from its pending tool_use info. */
+function requestedAgentType(info) {
+  const type = info && info.input && info.input.subagent_type;
+  return typeof type === 'string' && type ? type : null;
 }
 
 /** The latest parseable `timestamp` across all records, at or after `floor`. */

@@ -60,6 +60,12 @@ ${BASE_CSS}
 .turn-usage { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 8px 0 0; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-3); }
 .tu-sub { color: var(--text-2); }
 .tu-partial { font-style: italic; }
+.tu-break { color: var(--text-2); }
+.active-time { color: var(--text-3); }
+.turn-skills { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 8px 0 0; color: var(--text-3); }
+.turn-skills svg { width: 12px; height: 12px; margin-right: 2px; }
+.skill-chip { padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-family: var(--mono); font-size: 11px; }
+.turn-panel > .turn-skills { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); }
 .share-track { flex-basis: 100%; height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
 .share-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .turn-panel > .turn-usage { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); }

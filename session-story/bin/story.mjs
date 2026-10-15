@@ -122,6 +122,8 @@ function briefProjection(story) {
       tool_calls: toolCallsInTurn(story, t.index),
       output_tokens: perTurn.has(t.index) ? perTurn.get(t.index).output_tokens : null,
       share: perTurn.has(t.index) ? perTurn.get(t.index).share : null,
+      skills: t.skills || [],
+      cache_breaks: perTurn.has(t.index) ? perTurn.get(t.index).cache_breaks : null,
     })),
   };
 }

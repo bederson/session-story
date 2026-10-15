@@ -804,3 +804,32 @@ test('renderReviewLens adds floating previous/next step buttons with a step coun
 test('renderReviewLens leaves out the step buttons when there is only one turn', () => {
   assert.doesNotMatch(renderReviewLens(sampleStory()), /step-nav/);
 });
+
+test('renderHeader adds active time when idle gaps change the duration shown, and not otherwise', () => {
+  const withActive = (active_ms) => sampleStory({ metrics: { execution: { active_ms } } });
+  assert.match(renderHeader(withActive(120000)), /6m <span class="active-time" title="[^"]+">\(2m active\)<\/span>/);
+  assert.doesNotMatch(renderHeader(withActive(330000)), /active-time/);
+  assert.doesNotMatch(renderHeader(sampleStory()), /active-time/);
+});
+
+test('renderTurnUsage counts cache breaks and leaves them out when there were none', () => {
+  assert.match(renderTurnUsage(perTurn({ cache_breaks: 2 })), /<span class="tu-break" title="[^"]+">2 cache breaks<\/span>/);
+  assert.match(renderTurnUsage(perTurn({ cache_breaks: 1 })), />1 cache break</);
+  assert.doesNotMatch(renderTurnUsage(perTurn({ cache_breaks: 0 })), /tu-break/);
+  assert.doesNotMatch(renderTurnUsage(perTurn()), /tu-break/);
+});
+
+test('Review and Story show the skills a turn loaded as chips, escaped, and nothing for a turn without any', () => {
+  const story = sampleStory({
+    turns: [
+      { index: 1, id: 'u1', at: '2026-09-10T10:00:00.000Z', prompt: 'a', summary: 's', edits: [], skills: ['superpowers:brainstorming', '<x>'] },
+      { index: 2, id: 'u2', at: '2026-09-10T10:01:00.000Z', prompt: 'b', summary: 's', edits: [] },
+    ],
+  });
+  const review = renderReviewLens(story);
+  assert.equal((review.match(/class="turn-skills"/g) || []).length, 2); // timeline item and panel of turn 1
+  assert.match(review, /<span class="skill-chip">superpowers:brainstorming<\/span><span class="skill-chip">&lt;x&gt;<\/span>/);
+  const cards = renderStoryLens(story).split('<article class="story-card">');
+  assert.match(cards[1], /class="turn-skills"/);
+  assert.doesNotMatch(cards[2], /class="turn-skills"/);
+});

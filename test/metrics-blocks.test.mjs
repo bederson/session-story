@@ -159,3 +159,28 @@ test('Where it went is left out for one turn and without metrics.turns', () => {
   assert.equal(renderWhereItWent({ metrics: metrics() }), '');
   assert.equal(renderWhereItWent({}), '');
 });
+
+test('metrics panel shows active time, the share read from cache and cache breaks when known', () => {
+  const html = renderMetrics({ metrics: metrics({
+    execution: { ...metrics().execution, active_ms: 12000 },
+    usage: { ...metrics().usage, cache_read_share: 0.894, cache_breaks: 2 },
+  }) });
+  assert.match(html, /<dt>Active<\/dt><dd><span title="[^"]+">12\.0 s<\/span><\/dd>/);
+  assert.match(html, /<dt>Read from cache<\/dt><dd>89% of input<\/dd>/);
+  assert.match(html, /<dt>Cache breaks<\/dt><dd><span title="[^"]+">2<\/span><\/dd>/);
+  const older = renderMetrics({ metrics: metrics() });
+  assert.doesNotMatch(older, /<dt>Active<\/dt>|Read from cache|Cache breaks/);
+});
+
+test('Where it went lists turns with cache breaks, even a single one', () => {
+  const story = whereStory();
+  story.metrics.turns[2].cache_breaks = 1;
+  const html = renderWhereItWent(story);
+  const [, breaks] = html.split('<h3>By cache breaks</h3>');
+  assert.deepEqual([...breaks.matchAll(/class="where-row" data-turn="(\d+)"/g)].map((m) => m[1]), ['3']);
+  const one = whereStory();
+  one.metrics.turns = one.metrics.turns.slice(0, 1);
+  one.metrics.turns[0].cache_breaks = 1;
+  assert.match(renderWhereItWent(one), /By cache breaks/);
+  assert.doesNotMatch(renderWhereItWent(whereStory()), /By cache breaks/);
+});

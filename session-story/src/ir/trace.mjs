@@ -78,7 +78,7 @@ export function eventSummary(name, input, cwd) {
   if (name === 'Bash') return firstLine(i.command);
   if (FILE_TOOLS.has(name)) return firstLine(rel(i.file_path || i.notebook_path, cwd));
   if (name === 'Glob' || name === 'Grep') return firstLine(i.path ? `${i.pattern} in ${rel(i.path, cwd)}` : i.pattern);
-  if (name === 'Agent') return firstLine(i.description);
+  if (name === 'Agent' || name === 'Task') return firstLine(i.description);
   if (name === 'WebFetch' || name === 'WebSearch') return firstLine(i.url || i.query);
   return firstLine(i.description || '');
 }
@@ -114,33 +114,77 @@ export function newUsageAcc() {
 
 /**
  * Claude Code writes one assistant record per content block, and every
- * record of the same API call repeats the identical usage object, so the
- * usage is keyed by message.id and counted once.
+ * record of the same API call repeats its usage object, so the usage is
+ * keyed by message.id and counted once. The earlier records of a streamed
+ * call can carry a stale output count, so the largest one is kept. Ids in
+ * `skip` (the main thread's, when a subagent transcript replays them) are
+ * not counted again.
  */
-export function noteUsage(acc, record) {
+export function noteUsage(acc, record, skip = null) {
   if (!record || record.type !== 'assistant' || !record.message) return;
   const { id, usage, model } = record.message;
   if (typeof model === 'string' && model) acc.models.add(model);
   const key = id || record.uuid;
+  if (skip && id && skip.has(id)) return;
   if (!usage || typeof usage !== 'object') {
     acc.noUsage.add(key);
     return;
   }
+  const prev = acc.byMessage.get(key);
+  if (prev && (prev.output_tokens || 0) > (usage.output_tokens || 0)) return;
   acc.byMessage.set(key, usage);
 }
+
+/**
+ * An API call that sent more than this many input tokens without reading
+ * them from the prompt cache re-sent most of the context: after a
+ * compaction, a model switch, or an idle gap long enough for the cache to
+ * expire.
+ */
+export const CACHE_BREAK_TOKENS = 100000;
 
 /** Totals for the accumulator, or null when it saw no assistant records at all. */
 export function usageTotals(acc) {
   if (acc.byMessage.size === 0 && acc.noUsage.size === 0) return null;
   const totals = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_creation_tokens: 0 };
+  let cacheBreaks = 0;
   for (const u of acc.byMessage.values()) {
     totals.input_tokens += u.input_tokens || 0;
     totals.output_tokens += u.output_tokens || 0;
     totals.cache_read_tokens += u.cache_read_input_tokens || 0;
     totals.cache_creation_tokens += u.cache_creation_input_tokens || 0;
+    if ((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) > CACHE_BREAK_TOKENS) cacheBreaks++;
   }
   const complete = [...acc.noUsage].every((key) => acc.byMessage.has(key));
-  return { ...totals, api_calls: acc.byMessage.size, models: [...acc.models].sort(), complete };
+  return {
+    ...totals,
+    api_calls: acc.byMessage.size,
+    cache_breaks: cacheBreaks,
+    models: [...acc.models].sort(),
+    complete,
+  };
+}
+
+/** A gap between records longer than this is time away, not time working. */
+export const IDLE_GAP_MS = 5 * 60 * 1000;
+
+/**
+ * Time the session was active: the gaps between consecutive record
+ * timestamps (main thread and subagents together), leaving out any gap
+ * longer than IDLE_GAP_MS. null when fewer than two records are dated.
+ */
+export function activeMs(timestamps) {
+  const times = timestamps
+    .map((t) => (typeof t === 'string' ? Date.parse(t) : NaN))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (times.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < times.length; i++) {
+    const gap = times[i] - times[i - 1];
+    if (gap <= IDLE_GAP_MS) total += gap;
+  }
+  return total;
 }
 
 /**

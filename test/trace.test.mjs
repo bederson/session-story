@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   msBetween, newEvent, finishEvent, resultStatus, eventSummary, turnDuration, sortEvents,
   newUsageAcc, noteUsage, usageTotals, pickCostState, parseTaskNotifications,
+  CACHE_BREAK_TOKENS, IDLE_GAP_MS, activeMs,
 } from '../session-story/src/ir/trace.mjs';
 
 test('msBetween returns the positive difference in ms, or null when either timestamp is missing or unparseable', () => {
@@ -75,8 +76,47 @@ test('usage is counted once per API call even though each content block is its o
   noteUsage(acc, { type: 'assistant', uuid: 'a3', message: { id: 'msg_2', model: 'claude-opus-5-5', usage: { input_tokens: 1, output_tokens: 22 } } });
   assert.deepEqual(usageTotals(acc), {
     input_tokens: 3, output_tokens: 300, cache_read_tokens: 25520, cache_creation_tokens: 18435,
-    api_calls: 2, models: ['claude-opus-5-5'], complete: true,
+    api_calls: 2, cache_breaks: 0, models: ['claude-opus-5-5'], complete: true,
   });
+});
+
+test('a streamed API call keeps its largest output count, whatever order its records come in', () => {
+  const acc = newUsageAcc();
+  noteUsage(acc, { type: 'assistant', uuid: 'a1', message: { id: 'msg_1', usage: { input_tokens: 5, output_tokens: 1 } } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a2', message: { id: 'msg_1', usage: { input_tokens: 5, output_tokens: 400 } } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a3', message: { id: 'msg_1', usage: { input_tokens: 5, output_tokens: 9 } } });
+  assert.equal(usageTotals(acc).output_tokens, 400);
+  assert.equal(usageTotals(acc).api_calls, 1);
+});
+
+test('usage skips message ids it is told are counted elsewhere', () => {
+  const acc = newUsageAcc();
+  noteUsage(acc, { type: 'assistant', uuid: 'a1', message: { id: 'msg_main', usage: { output_tokens: 50 } } }, new Set(['msg_main']));
+  noteUsage(acc, { type: 'assistant', uuid: 'a2', message: { id: 'msg_sub', usage: { output_tokens: 7 } } }, new Set(['msg_main']));
+  assert.equal(usageTotals(acc).output_tokens, 7);
+  assert.equal(usageTotals(acc).api_calls, 1);
+});
+
+test('a call that sent over 100k input tokens past the cache is a cache break', () => {
+  const acc = newUsageAcc();
+  noteUsage(acc, { type: 'assistant', uuid: 'a1', message: { id: 'm1', usage: { input_tokens: 3, cache_creation_input_tokens: 150000, cache_read_input_tokens: 0 } } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a2', message: { id: 'm2', usage: { input_tokens: 3, cache_creation_input_tokens: 900, cache_read_input_tokens: 150000 } } });
+  noteUsage(acc, { type: 'assistant', uuid: 'a3', message: { id: 'm3', usage: { input_tokens: 100000, cache_creation_input_tokens: 0 } } });
+  assert.equal(CACHE_BREAK_TOKENS, 100000);
+  assert.equal(usageTotals(acc).cache_breaks, 1);
+});
+
+test('activeMs sums the gaps between records and leaves out gaps over five minutes', () => {
+  assert.equal(activeMs([
+    '2026-10-08T10:00:00.000Z',
+    '2026-10-08T10:02:00.000Z',
+    '2026-10-08T11:00:00.000Z',
+    '2026-10-08T11:05:00.000Z',
+    'not a date',
+  ]), 2 * 60000 + 5 * 60000);
+  assert.equal(activeMs(['2026-10-08T10:00:01.000Z', '2026-10-08T10:00:00.000Z']), 1000);
+  assert.equal(activeMs(['2026-10-08T10:00:00.000Z']), null);
+  assert.equal(IDLE_GAP_MS, 300000);
 });
 
 test('usage is incomplete when an API call carried no usage, and null when there were no assistant records', () => {

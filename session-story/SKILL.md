@@ -53,13 +53,20 @@ session" / "/session-story".
    write resolutions. The brief also carries `metrics` (execution, code,
    validation, reads, usage — deterministic counts with `null` for anything
    the transcript did not record), `environment` (agent version and model
-   ids) and, per turn, `duration_ms`, `tool_calls`, `output_tokens` and
+   ids) and, per turn, `duration_ms`, `tool_calls`, `output_tokens`,
    `share` (the turn's fraction of the session's output tokens, input
-   tokens and duration, subagents included). Use them to inform
+   tokens and duration, subagents included), `skills` (the skills the turn
+   loaded) and `cache_breaks` (API calls that re-sent over 100k input
+   tokens without the prompt cache). `metrics.execution.active_ms` is the
+   session's time without idle gaps over five minutes; `metrics.usage`
+   adds `cache_read_share` and `cache_breaks`. Use them to inform
    `report.outcome` and `outcome_note`; never restate or recompute them,
    and never write a number the brief shows as `null`. When one turn
    clearly dominated, you may say so in words ("most of the session went
-   into the redesign"), never as a number or a cost.
+   into the redesign"), never as a number or a cost. The same goes for
+   skills and cache breaks: a turn summary may say "brainstormed the
+   design first" or "re-read the whole context after a compaction", but
+   the page already shows the names and counts.
 
 2. **Summarize and write the report.** Using the brief projection from
    step 1, write directly into `<scratch>/story.json` with the Edit tool

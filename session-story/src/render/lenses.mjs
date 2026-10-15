@@ -130,6 +130,8 @@ function clampTitle(text) {
   return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX)}…` : text;
 }
 
+export const ACTIVE_TITLE = 'Time spent working: gaps of more than 5 minutes between records are left out';
+
 export function formatDuration(ms) {
   if (!ms) return '0m';
   const totalMinutes = Math.round(ms / 60000);
@@ -293,6 +295,12 @@ export function renderHeader(story, opts = {}) {
     .map((b) => `<li>${icon('warning')}<span>${escapeHtml(b)}</span></li>`)
     .join('');
   const started = formatRange(session.started_at, session.ended_at);
+  const execution = (story.metrics && story.metrics.execution) || {};
+  const active = isNum(execution.active_ms) ? execution.active_ms : null;
+  // Only worth saying when the idle time changes the number shown.
+  const activeNote = active !== null && formatDuration(active) !== formatDuration(session.duration_ms)
+    ? ` <span class="active-time" title="${ACTIVE_TITLE}">(${formatDuration(active)} active)</span>`
+    : '';
 
   const outcome = report && report.outcome;
   const outcomePill = outcome
@@ -329,7 +337,7 @@ export function renderHeader(story, opts = {}) {
     `<div class="meta">` +
     `<span class="cwd">${icon('folder')}<span>${escapeHtml(session.cwd || '')}</span></span>` +
     (session.git_branch ? `<span class="branch">${icon('branch')}<span>${escapeHtml(session.git_branch)}</span></span>` : '') +
-    `<span class="duration">${icon('clock')}<span>${formatDuration(session.duration_ms)}${started ? ` · ${started}` : ''}</span></span>` +
+    `<span class="duration">${icon('clock')}<span>${formatDuration(session.duration_ms)}${activeNote}${started ? ` · ${started}` : ''}</span></span>` +
     commitRange +
     (opts.generatedAt
       ? `<span class="generated" title="When this page was generated">${icon('sparkle')}<span>Generated ` +
@@ -398,6 +406,9 @@ export function renderTurnUsage(pt, { bar = true } = {}) {
   } else if (isNum(pt.input_tokens)) {
     parts.push(`<span>${formatTokens(pt.input_tokens)} in</span>`);
   }
+  if (isNum(pt.cache_breaks) && pt.cache_breaks > 0) {
+    parts.push(`<span class="tu-break" title="${CACHE_BREAK_TITLE}">${pt.cache_breaks} ${plural(pt.cache_breaks, 'cache break')}</span>`);
+  }
   if (pt.complete === false) parts.push('<span class="tu-partial" title="Some API calls in this turn carried no usage">partial</span>');
   const sub = subagentPhrase(pt.subagents);
   if (parts.length === 0 && !sub) return '';
@@ -407,6 +418,16 @@ export function renderTurnUsage(pt, { bar = true } = {}) {
       `<span class="share-fill" style="width:${percent(share)}%"></span></span>`
     : '';
   return `<p class="turn-usage">${parts.join(' · ')}${sub ? ` ${sub}` : ''}${track}</p>`;
+}
+
+export const CACHE_BREAK_TITLE = 'API calls that re-sent over 100k input tokens without the prompt cache, as after a compaction, a model switch or a long pause';
+
+/** The skills a turn loaded, as chips; '' when it loaded none. */
+export function renderSkills(turn) {
+  const skills = Array.isArray(turn.skills) ? turn.skills : [];
+  if (skills.length === 0) return '';
+  const chips = skills.map((name) => `<span class="skill-chip">${escapeHtml(name)}</span>`).join('');
+  return `<p class="turn-skills" title="Skills loaded in this turn">${icon('sparkle')}${chips}</p>`;
 }
 
 function turnUsage(story, turn, opts) {
@@ -525,6 +546,7 @@ export function renderReviewLens(story) {
         turnTime(turn) +
         `<blockquote class="turn-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         summaryHtml +
+        renderSkills(turn) +
         renderActivityBar(turn, max) +
         turnUsage(story, turn) +
         (turn.edits.length > 0
@@ -554,6 +576,7 @@ export function renderReviewLens(story) {
         inert(
         `<div class="panel-head"><span class="panel-title">${icon('turns')}Turn ${turn.index}</span>${turnTime(turn)}${panelMeta(turn)}</div>` +
         turnUsage(story, turn, { bar: false }) +
+        renderSkills(turn) +
         `<div class="panel-prompt-wrap">` +
         `<div class="panel-prompt-head"><span class="panel-prompt-label">Prompt</span><button type="button" class="copy-btn" data-copy-target=".panel-prompt" aria-label="Copy prompt text">Copy</button></div>` +
         `<blockquote class="panel-prompt">${escapeHtml(turn.prompt)}</blockquote></div>` +
@@ -681,6 +704,7 @@ export function renderStoryLens(story) {
         `<div class="story-index">${turn.index}</div>` +
         `<blockquote class="story-prompt">${escapeHtml(turn.prompt)}</blockquote>` +
         `<p class="story-summary">${escapeHtml(turn.summary || '')}</p>` +
+        renderSkills(turn) +
         renderReplies(turn) +
         renderActivityBar(turn, max) +
         turnUsage(story, turn, { bar: false }) +

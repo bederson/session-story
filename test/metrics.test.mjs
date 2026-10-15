@@ -63,7 +63,7 @@ test('computeMetrics derives execution, code, validation and reads from turns an
     { id: 'tu8', kind: 'tool', turn: 1, status: 'ok', tool: 'Grep', summary: 'foo in src' },
   ];
   const m = computeMetrics(story({ turns, events, totals: { turns: 1, files: 2, added: 2, removed: 1, edits: 2 } }));
-  assert.deepEqual(m.execution, { duration_ms: 18500, turns: 1, tool_calls: 7, failed_tool_calls: 1, rejected_tool_calls: 1, commands: 2, failed_commands: 1, retries: 1 });
+  assert.deepEqual(m.execution, { duration_ms: 18500, active_ms: null, turns: 1, tool_calls: 7, failed_tool_calls: 1, rejected_tool_calls: 1, commands: 2, failed_commands: 1, retries: 1 });
   assert.deepEqual(m.code, { files_changed: 2, lines_added: 2, lines_removed: 1, edits: 2, in_project: { files_changed: 1, lines_added: 2, lines_removed: 1, edits: 2 }, files_edited_repeatedly: [{ rel: 'src/a.js', edits: 2 }] });
   assert.deepEqual(m.validation, { commands: 2, passed: 1, failed: 1, final_state: 'passed', last_command: 'npm test' });
   assert.deepEqual(m.reads, { files_read: 1, tool_calls: 3 });
@@ -102,7 +102,7 @@ test('usage prefers cost-state totals and reports the cost', () => {
     model_usage: { 'claude-opus-5-5': { inputTokens: 30, outputTokens: 65, cacheReadInputTokens: 1100, cacheCreationInputTokens: 100, costUSD: 0.05 } },
   }];
   const m = computeMetrics(story({ costStates }));
-  assert.deepEqual(m.usage, { input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, total_cost_usd: 0.05, models: ['claude-opus-5-5'], source: 'cost-state', complete: true, sessions: [] });
+  assert.deepEqual(m.usage, { input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, total_cost_usd: 0.05, models: ['claude-opus-5-5'], source: 'cost-state', complete: true, sessions: [], cache_read_share: 0.894, cache_breaks: null });
 });
 
 test('usage counts only the last of several running-total cost-states from one process', () => {
@@ -154,12 +154,12 @@ test('usage sums turn and subagent usage with a null cost when there is no cost-
   ];
   const events = [{ id: 'ag', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: { input_tokens: 10, output_tokens: 20, cache_read_tokens: 0, cache_creation_tokens: 0, api_calls: 2, models: ['claude-haiku-4-5-20251001'], complete: false } }];
   const m = computeMetrics(story({ turns, events }));
-  assert.deepEqual(m.usage, { input_tokens: 11, output_tokens: 22, cache_read_tokens: 3, cache_creation_tokens: 4, total_cost_usd: null, models: ['claude-haiku-4-5-20251001', 'claude-opus-5-5'], source: 'transcript', complete: false });
+  assert.deepEqual(m.usage, { input_tokens: 11, output_tokens: 22, cache_read_tokens: 3, cache_creation_tokens: 4, total_cost_usd: null, models: ['claude-haiku-4-5-20251001', 'claude-opus-5-5'], source: 'transcript', complete: false, cache_read_share: 0.167, cache_breaks: null });
 });
 
 test('usage is all null with source none when nothing carried usage', () => {
   const m = computeMetrics(story({ turns: [{ index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], usage: null }] }));
-  assert.deepEqual(m.usage, { input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, total_cost_usd: null, models: [], source: 'none', complete: false });
+  assert.deepEqual(m.usage, { input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, total_cost_usd: null, models: [], source: 'none', complete: false, cache_read_share: null, cache_breaks: null });
 });
 
 test('an old story with no trace gets nulls for trace-derived counts, numbers for code, and no 0 for an unknown duration', () => {
@@ -197,13 +197,13 @@ test('metrics.turns gives each turn its duration, tokens, subagent tokens and sh
   assert.deepEqual(m.turns, [
     {
       index: 1, duration_ms: 9000, duration_source: 'transcript',
-      input_tokens: 10, output_tokens: 100, cache_read_tokens: 1000, cache_creation_tokens: 90, api_calls: 3, complete: true,
-      subagents: { count: 1, with_usage: 1, input_tokens: 5, output_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0 },
+      input_tokens: 10, output_tokens: 100, cache_read_tokens: 1000, cache_creation_tokens: 90, api_calls: 3, cache_breaks: null, complete: true,
+      subagents: { count: 1, with_usage: 1, input_tokens: 5, output_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0, cache_breaks: null },
       share: { output: 0.4, input: 0.686, duration: 0.486 },
     },
     {
       index: 2, duration_ms: 5000, duration_source: 'derived',
-      input_tokens: 5, output_tokens: 300, cache_read_tokens: 500, cache_creation_tokens: 0, api_calls: 2, complete: true,
+      input_tokens: 5, output_tokens: 300, cache_read_tokens: 500, cache_creation_tokens: 0, api_calls: 2, cache_breaks: null, complete: true,
       subagents: null,
       share: { output: 0.6, input: 0.314, duration: 0.27 },
     },
@@ -218,7 +218,7 @@ test('a turn with no usage gets null tokens and shares but keeps its duration', 
   const [t1, t2] = computeMetrics(story({ turns })).turns;
   assert.deepEqual(t1, {
     index: 1, duration_ms: 4000, duration_source: 'derived',
-    input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, api_calls: null, complete: null,
+    input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, api_calls: null, cache_breaks: null, complete: null,
     subagents: null, share: { output: null, input: null, duration: 0.216 },
   });
   assert.equal(t2.share.output, 1);
@@ -232,7 +232,7 @@ test('a subagent without usage is counted but contributes no tokens', () => {
     { id: 'a2', kind: 'subagent', turn: 1, status: 'ok', tool: 'Agent', usage: null },
   ];
   const [t] = computeMetrics(story({ turns, events })).turns;
-  assert.deepEqual(t.subagents, { count: 2, with_usage: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null });
+  assert.deepEqual(t.subagents, { count: 2, with_usage: 0, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null, cache_breaks: null });
   assert.equal(t.share.output, 1);
 });
 
@@ -262,4 +262,26 @@ test('an old story with no trace still gets metrics.turns, with no subagents', (
   assert.equal(t.duration_ms, null);
   assert.equal(t.duration_source, 'unknown');
   assert.equal(t.subagents, null);
+});
+
+test('cache breaks are summed over turns and subagents, per turn and for the session, even with cost-state totals', () => {
+  const usage = (cache_breaks) => ({ input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_creation_tokens: 0, api_calls: 1, cache_breaks, models: [], complete: true });
+  const turns = [
+    { index: 1, id: 'u1', prompt: 'a', edits: [], bash: [], usage: usage(1) },
+    { index: 2, id: 'u2', prompt: 'b', edits: [], bash: [], usage: usage(0) },
+  ];
+  const events = [{ id: 'ag', kind: 'subagent', turn: 2, status: 'ok', tool: 'Agent', usage: usage(2) }];
+  const costStates = [{ total_cost_usd: 1, model_usage: { m: { inputTokens: 1 } }, has_unknown_model_cost: false }];
+  const m = computeMetrics(story({ turns, events, costStates }));
+  assert.equal(m.usage.source, 'cost-state');
+  assert.equal(m.usage.cache_breaks, 3);
+  assert.deepEqual(m.turns.map((t) => t.cache_breaks), [1, 2]);
+  assert.equal(m.turns[1].subagents.cache_breaks, 2);
+});
+
+test('execution.active_ms comes from the session and never exceeds the wall-clock duration', () => {
+  const base = { id: 's1', chain: ['s1'], started_at: '2026-10-08T10:00:00.000Z', ended_at: '2026-10-08T10:00:18.500Z' };
+  assert.equal(computeMetrics(story({ session: { ...base, active_ms: 12000 } })).execution.active_ms, 12000);
+  assert.equal(computeMetrics(story({ session: { ...base, active_ms: 99999 } })).execution.active_ms, 18500);
+  assert.equal(computeMetrics(story({ session: base })).execution.active_ms, null);
 });

@@ -314,7 +314,7 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.equal(story.turns[0].duration_source, 'transcript');
   assert.equal(story.turns[0].usage.api_calls, 4);
   assert.deepEqual(story.environment, { agent: { name: 'Claude Code', version: '2.1.288' }, models: ['claude-opus-5-5'] });
-  assert.deepEqual(story.metrics.execution, { duration_ms: 18500, turns: 1, tool_calls: 4, failed_tool_calls: 1, rejected_tool_calls: 0, commands: 2, failed_commands: 1, retries: 1 });
+  assert.deepEqual(story.metrics.execution, { duration_ms: 18500, active_ms: 18500, turns: 1, tool_calls: 4, failed_tool_calls: 1, rejected_tool_calls: 0, commands: 2, failed_commands: 1, retries: 1 });
   assert.deepEqual(story.metrics.validation, { commands: 2, passed: 1, failed: 1, final_state: 'passed', last_command: 'npm test' });
   assert.deepEqual(story.metrics.reads, { files_read: 1, tool_calls: 1 });
   assert.equal(story.metrics.usage.source, 'cost-state');
@@ -328,7 +328,7 @@ test('extract writes trace, metrics and environment, and --brief carries metrics
   assert.equal(brief.environment.agent.version, '2.1.288');
   assert.deepEqual(story.metrics.turns, [{
     index: 1, duration_ms: 18000, duration_source: 'transcript',
-    input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, api_calls: 4, complete: true,
+    input_tokens: 30, output_tokens: 65, cache_read_tokens: 1100, cache_creation_tokens: 100, api_calls: 4, cache_breaks: 0, complete: true,
     subagents: null, share: { output: 1, input: 1, duration: 0.973 },
   }]);
   assert.equal(brief.turns[0].output_tokens, 65);

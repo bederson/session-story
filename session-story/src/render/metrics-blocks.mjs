@@ -10,6 +10,7 @@
 import { escapeHtml } from './diff.mjs';
 import {
   statTile, plural, dual, formatTokens, formatCost, inputWithCache, formatLatency, DURATION_SOURCE_LABEL,
+  ACTIVE_TITLE, CACHE_BREAK_TITLE,
 } from './lenses.mjs';
 
 // Shared with the header and the library page.
@@ -101,6 +102,7 @@ export function renderMetrics(story) {
   const groups = [
     group('Execution', [
       row('Duration', formatLatency(x.duration_ms) || na()),
+      ...(isNum(x.active_ms) ? [row('Active', `<span title="${ACTIVE_TITLE}">${formatLatency(x.active_ms)}</span>`)] : []),
       row('Turns', num(x.turns)),
       row('Tool calls', num(x.tool_calls)),
       row('Failed', num(x.failed_tool_calls)),
@@ -136,6 +138,8 @@ export function renderMetrics(story) {
       row('Output tokens', formatTokens(u.output_tokens) || na()),
       row('Cache read', formatTokens(u.cache_read_tokens) || na()),
       row('Cache write', formatTokens(u.cache_creation_tokens) || na()),
+      ...(isNum(u.cache_read_share) ? [row('Read from cache', `${Math.round(u.cache_read_share * 100)}% of input`)] : []),
+      ...(isNum(u.cache_breaks) ? [row('Cache breaks', `<span title="${CACHE_BREAK_TITLE}">${u.cache_breaks}</span>`)] : []),
       row('Cost', costValue(u.total_cost_usd)),
       ...((u.sessions || []).length > 1 ? [row('Cost by session', costBySession(u.sessions))] : []),
       row('Models', (u.models || []).map((model) => `<code>${escapeHtml(model)}</code>`).join(', ') || na()),
@@ -168,8 +172,8 @@ function rankBy(rows, key) {
     .slice(0, WHERE_TOP);
 }
 
-function whereList(title, rows, key, format, titleOf) {
-  if (rows.length < 2) return '';
+function whereList(title, rows, key, format, titleOf, minRows = 2) {
+  if (rows.length < minRows) return '';
   const max = rows[0][key];
   const items = rows.map((r) => {
     const width = max > 0 ? Math.max(1, Math.round((r[key] / max) * 100)) : 0;
@@ -190,7 +194,8 @@ function whereList(title, rows, key, format, titleOf) {
 /**
  * The turns that took the most output tokens (main thread plus the
  * subagents they spawned) and the most time, from `metrics.turns`. A list
- * needs two ranked turns to say anything; '' when neither has them.
+ * needs two ranked turns to say anything, except the cache-break list,
+ * which shows any turn that had one; '' when none has anything to show.
  */
 export function renderWhereItWent(story) {
   const perTurn = story && story.metrics && Array.isArray(story.metrics.turns) ? story.metrics.turns : [];
@@ -209,8 +214,11 @@ export function renderWhereItWent(story) {
   });
   const time = whereList('By duration', rankBy(rows, 'duration_ms'), 'duration_ms', formatLatency,
     (r) => DURATION_SOURCE_LABEL[r.duration_source] || '');
-  if (!tokens && !time) return '';
-  return `<div class="where-went"><h3 class="where-title">Where it went</h3><div class="where-lists">${tokens}${time}</div></div>`;
+  // A single cache break is worth pointing at, so this list needs only one turn.
+  const breaks = whereList('By cache breaks', rankBy(rows.filter((r) => r.cache_breaks > 0), 'cache_breaks'), 'cache_breaks',
+    String, () => CACHE_BREAK_TITLE, 1);
+  if (!tokens && !time && !breaks) return '';
+  return `<div class="where-went"><h3 class="where-title">Where it went</h3><div class="where-lists">${tokens}${time}${breaks}</div></div>`;
 }
 
 export const METRICS_CSS = `

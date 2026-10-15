@@ -13,6 +13,12 @@
  *   subagents it spawned, and its share of the session's output tokens,
  *   input tokens (incl. cache) and duration. A share is null when either
  *   side is unknown; shares need not sum to 1.
+ * - active_ms: session time without idle gaps over five minutes between
+ *   records (src/ir/trace.mjs activeMs); null for stories extracted before
+ *   it was recorded.
+ * - cache_breaks: API calls that sent over 100k input tokens past the prompt
+ *   cache (src/ir/trace.mjs CACHE_BREAK_TOKENS), counted from the transcript
+ *   even when the token totals come from cost-state records.
  */
 
 import { msBetween } from './trace.mjs';
@@ -242,10 +248,25 @@ function subagentTotals(agents) {
   if (agents.length === 0) return null;
   const withUsage = agents.map((e) => e.usage).filter(Boolean);
   const out = { count: agents.length, with_usage: withUsage.length };
-  for (const key of TOKEN_KEYS) {
-    out[key] = withUsage.length ? withUsage.reduce((n, u) => n + (u[key] || 0), 0) : null;
+  for (const key of [...TOKEN_KEYS, 'cache_breaks']) {
+    out[key] = withUsage.length ? sumKnown(withUsage.map((u) => u[key])) : null;
   }
   return out;
+}
+
+/** The sum of the numbers among `values`, or null when none is a number. */
+function sumKnown(values) {
+  const nums = values.filter(isNum);
+  return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+}
+
+/** Cache breaks across every turn and subagent, from the transcript; null when none recorded the count. */
+function cacheBreaks(story) {
+  const events = (story.trace && Array.isArray(story.trace.events)) ? story.trace.events : [];
+  return sumKnown([
+    ...(story.turns || []).map((t) => t.usage && t.usage.cache_breaks),
+    ...events.filter((e) => e.kind === 'subagent').map((e) => e.usage && e.usage.cache_breaks),
+  ]);
 }
 
 function turnMetrics(story, usage, sessionMs) {
@@ -267,6 +288,7 @@ function turnMetrics(story, usage, sessionMs) {
     };
     for (const key of TOKEN_KEYS) entry[key] = u && isNum(u[key]) ? u[key] : null;
     entry.api_calls = u && isNum(u.api_calls) ? u.api_calls : null;
+    entry.cache_breaks = sumKnown([u && u.cache_breaks, sub && sub.cache_breaks]);
     entry.complete = u ? !!u.complete : null;
     entry.subagents = sub;
     entry.share = {
@@ -289,9 +311,12 @@ export function computeMetrics(story) {
   const session = story.session || {};
   const durationMs = msBetween(session.started_at, session.ended_at);
   const usage = usageMetrics(story);
+  usage.cache_read_share = shareOf(usage.cache_read_tokens, inputTotal(usage));
+  usage.cache_breaks = cacheBreaks(story);
   return {
     execution: {
       duration_ms: durationMs,
+      active_ms: isNum(session.active_ms) ? Math.min(session.active_ms, isNum(durationMs) ? durationMs : Infinity) : null,
       turns: (story.turns || []).length,
       tool_calls: hasTrace ? toolEvents.length : null,
       failed_tool_calls: hasTrace ? toolEvents.filter((e) => e.status === 'error').length : null,
