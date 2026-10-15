@@ -32,6 +32,8 @@ Session Story is a zero-dependency Node.js extraction and rendering pipeline for
 - **Honest about blind spots** — an interrupted tool call or a change made by a shell command is called out in the page header instead of silently omitted
 - **One file, ready to share** — no server, no build step, works straight from `file://`
 
+<p align="center"><img src="docs/assets/session-story-views.gif" alt="Switching between the Review, Diff, Story and Report views of a session story" width="960" /></p>
+
 Git tells you what changed. This tells you what happened.
 
 **[Start page](https://nalaj.github.io/session-story/) · [Live example](https://nalaj.github.io/session-story/example/index.html)**. The example is built from a synthetic demo session; the same page is checked in at [`examples/story.html`](examples/story.html).
