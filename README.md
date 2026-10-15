@@ -1,4 +1,27 @@
-# Session Story
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/metafyl-lockup-dark.svg" />
+    <img src="docs/assets/metafyl-lockup-light.svg" alt="Metafyl" width="394" height="120" />
+  </picture>
+</p>
+<h3 align="center">Stop guessing what your AI changed. See the whole story.</h3>
+
+<p align="center"><img src="docs/assets/metafyl-readme-hero.png" alt="A session story: each prompt in the session next to the code changes it led to" width="960" /></p>
+
+<p align="center">
+  <a href="https://nalaj.github.io/metafyl/"><strong>Start page</strong></a> &nbsp;·&nbsp;
+  <a href="https://nalaj.github.io/metafyl/example/index.html"><strong>Live example</strong></a> &nbsp;·&nbsp;
+  <a href="#quick-start"><strong>Quick start</strong></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/Agent-Skill-7C3AED?style=flat-square" alt="Agent Skill" />
+  <img src="https://img.shields.io/badge/node-%3E%3D18.18-339933?style=flat-square" alt="Node 18.18 or later" />
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.0-0891b2?style=flat-square" alt="Version 0.2.0" /></a>
+</p>
+
+## Session Story
 
 **Generate a self-contained HTML "session story" that links each prompt in a vibe coding session to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative.**
 
@@ -8,11 +31,6 @@ Session Story is a zero-dependency Node.js extraction and rendering pipeline for
 - **Reconstruct intent, not just diffs** — every edit is linked back to the prompt and turn that produced it, in order
 - **Honest about blind spots** — an interrupted tool call or a change made by a shell command is called out in the page header instead of silently omitted
 - **One file, ready to share** — no server, no build step, works straight from `file://`
-
-![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
-![Agent Skill](https://img.shields.io/badge/Agent-Skill-7C3AED?style=flat-square)
-![Node](https://img.shields.io/badge/node-%3E%3D18.18-339933?style=flat-square)
-![Version](https://img.shields.io/badge/version-0.2.0-0891b2?style=flat-square)
 
 Git tells you what changed. This tells you what happened.
 
