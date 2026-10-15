@@ -9,8 +9,8 @@
 <p align="center"><img src="docs/assets/metafyl-readme-hero.png" alt="A session story: each prompt in the session next to the code changes it led to" width="960" /></p>
 
 <p align="center">
-  <a href="https://nalaj.github.io/metafyl/"><strong>Start page</strong></a> &nbsp;·&nbsp;
-  <a href="https://nalaj.github.io/metafyl/example/index.html"><strong>Live example</strong></a> &nbsp;·&nbsp;
+  <a href="https://nalaj.github.io/session-story/"><strong>Start page</strong></a> &nbsp;·&nbsp;
+  <a href="https://nalaj.github.io/session-story/example/index.html"><strong>Live example</strong></a> &nbsp;·&nbsp;
   <a href="#quick-start"><strong>Quick start</strong></a>
 </p>
 
@@ -34,7 +34,7 @@ Session Story is a zero-dependency Node.js extraction and rendering pipeline for
 
 Git tells you what changed. This tells you what happened.
 
-**[Start page](https://nalaj.github.io/metafyl/) · [Live example](https://nalaj.github.io/metafyl/example/index.html)**. The example is built from a synthetic demo session; the same page is checked in at [`examples/story.html`](examples/story.html).
+**[Start page](https://nalaj.github.io/session-story/) · [Live example](https://nalaj.github.io/session-story/example/index.html)**. The example is built from a synthetic demo session; the same page is checked in at [`examples/story.html`](examples/story.html).
 
 ## Quick start
 
