@@ -9,7 +9,7 @@
  * latency, not the tool's own runtime.
  */
 
-import path from 'node:path';
+import { relativeTo } from '../transcript/paths.mjs';
 import { isRejection } from './commands.mjs';
 
 export const EVENT_KINDS = ['prompt', 'tool', 'subagent'];
@@ -69,8 +69,7 @@ function firstLine(text) {
 
 function rel(filePath, cwd) {
   if (!filePath) return '';
-  if (!cwd) return filePath;
-  return path.relative(cwd, filePath) || filePath;
+  return relativeTo(filePath, cwd);
 }
 
 /** One short line naming what a tool call acted on; '' when the input says nothing useful. */

@@ -4,7 +4,7 @@
  * record shapes this relies on and the IR shape it produces.
  */
 
-import path from 'node:path';
+import { relativeTo, isOutsideRel } from './paths.mjs';
 import { crossIndexFiles } from '../ir/cross-index.mjs';
 import { classifyCommand, parseExitCode, isRejection } from '../ir/commands.mjs';
 import {
@@ -327,8 +327,7 @@ function hunkStats(hunks) {
 }
 
 function relativePath(filePath, cwd) {
-  if (!cwd || !filePath) return filePath;
-  return path.relative(cwd, filePath) || filePath;
+  return relativeTo(filePath, cwd);
 }
 
 /**
@@ -336,8 +335,7 @@ function relativePath(filePath, cwd) {
  * (a scratchpad or temp file, whose relative path climbs out of the repo).
  */
 function isOutsideCwd(rel) {
-  if (!rel) return false;
-  return rel.startsWith('..') || path.isAbsolute(rel);
+  return isOutsideRel(rel);
 }
 
 /** The edit record as it stands before its tool result arrives. */

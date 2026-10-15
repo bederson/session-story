@@ -18,6 +18,11 @@ test('slugify also replaces dots, matching Claude Code’s real project folder n
   );
 });
 
+test('slugify replaces every non-alphanumeric character, so a Windows cwd finds its folder too', () => {
+  assert.equal(slugify('C:\\Users\\dev\\my_app'), 'C--Users-dev-my-app');
+  assert.equal(slugify('/home/dev/todo app'), '-home-dev-todo-app');
+});
+
 async function makeClaudeDir() {
   const root = await mkdtemp(path.join(tmpdir(), 'claude-test-'));
   return path.join(root, 'projects');

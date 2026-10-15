@@ -10,7 +10,7 @@ import os from 'node:os';
  * @returns {string}
  */
 export function slugify(cwd) {
-  return cwd.replace(/[/.]/g, '-');
+  return cwd.replace(/[^A-Za-z0-9]/g, '-');
 }
 
 export function defaultClaudeDir() {

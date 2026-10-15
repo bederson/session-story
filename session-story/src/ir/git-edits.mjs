@@ -39,7 +39,7 @@
  * beats a reconstruction.
  */
 
-import path from 'node:path';
+import { resolveIn } from '../transcript/paths.mjs';
 import { readFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { analyzeBashCommand } from '../transcript/bash-edits.mjs';
@@ -282,7 +282,7 @@ export function fillBashEditsFromGit(story, deps = {}) {
   const startedAt = Date.parse((story.session && story.session.started_at) || '');
   const touchedDuringSession = ({ rel, status: code }) => {
     if (!Number.isFinite(startedAt) || statusKind(code) === 'delete') return true;
-    const at = safe(() => mtime(path.resolve(cwd, rel)), null, 'number');
+    const at = safe(() => mtime(resolveIn(cwd, rel)), null, 'number');
     return at === null || at >= startedAt;
   };
 
@@ -333,7 +333,7 @@ function safe(fn, fallback = null, type = 'string') {
 }
 
 function buildEdit({ rel, kind, cwd, git, readText, claim, base = 'HEAD' }) {
-  const file = cwd ? path.resolve(cwd, rel) : rel;
+  const file = resolveIn(cwd, rel);
   const command = lastWritingCommand(claim.turn, rel, cwd);
   const edit = {
     id: `bash:${rel}`,
