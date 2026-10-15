@@ -276,14 +276,6 @@ footer a { color: var(--ink-2); }
       </div>
       <div class="body">
         <div class="controls">
-          <div><span class="label">Agent</span>
-            <div class="seg" role="group" aria-label="Agent" id="agents">
-              <button type="button" data-agent="claude-code" aria-pressed="true">Claude Code</button>
-              <button type="button" data-agent="codex" aria-pressed="false">Codex</button>
-              <button type="button" data-agent="cursor" aria-pressed="false">Cursor</button>
-              <button type="button" data-agent="opencode" aria-pressed="false">OpenCode</button>
-            </div>
-          </div>
           <div><span class="label">Scope</span>
             <div class="seg" role="group" aria-label="Scope" id="scopes">
               <button type="button" data-scope="global" aria-pressed="true">All projects</button>
@@ -295,7 +287,6 @@ footer a { color: var(--ink-2); }
           <pre id="cmd"></pre>
           <button class="copy" type="button" data-copy-from="cmd">Copy</button>
         </div>
-        <p class="note warn" id="agent-note" hidden>The skill installs into this agent, but it only reads <b>Claude Code</b> transcripts (<code>~/.claude/projects</code>). Use it here to make stories of your Claude Code sessions.</p>
         <p class="note">Run the same command again to update. Remove it with <code>npx skills remove session-story</code>.</p>
       </div>
     </section>
@@ -364,20 +355,18 @@ footer a { color: var(--ink-2); }
 
 <script>
 (() => {
-  const state = { agent: 'claude-code', scope: 'global' };
+  const state = { scope: 'global' };
   const cmd = document.getElementById('cmd');
-  const note = document.getElementById('agent-note');
 
   function render() {
     const parts = [
       'npx -y skills add nalaj/metafyl',
       '--skill session-story',
-      `--agent ${state.agent}`,
+      '--agent claude-code',
       ...(state.scope === 'global' ? ['--global'] : []),
       '--copy --yes',
     ];
     cmd.textContent = parts.join(' ');
-    note.hidden = state.agent === 'claude-code';
   }
 
   function group(id, key) {
@@ -390,7 +379,6 @@ footer a { color: var(--ink-2); }
       render();
     });
   }
-  group('agents', 'agent');
   group('scopes', 'scope');
   render();
 

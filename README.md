@@ -54,8 +54,6 @@ npx -y skills add nalaj/metafyl --skill session-story --agent claude-code --copy
 
 This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI. It copies only the [`session-story/`](session-story) folder into your agent's skills directory, so nothing goes to npm and there's nothing else to install. The installer needs Node.js 22.20+ (the `skills` CLI's own requirement); the skill itself runs on Node.js 18.18+ with zero npm runtime dependencies. To update, run the same command again. To remove it: `npx skills remove session-story`.
 
-`--agent` also accepts `codex`, `cursor`, `opencode` and others. The skill installs there too, but it reads **Claude Code** transcripts only (see Limits).
-
 Or clone this repo and run `node session-story/bin/story.mjs` directly.
 
 ### 2. Generate a story
@@ -167,7 +165,7 @@ A story page holds your session word for word: prompts, Claude's replies, diffs,
 
 ## Limits (v1)
 
-- Claude Code sessions only — Codex, Cursor, and OpenCode transcripts are a different format and out of scope for now.
+- Claude Code sessions only — Codex, Cursor, and OpenCode transcripts are a different format. Support for them is planned.
 - `Edit`, `Write`, and `NotebookEdit` calls come from the transcript, which carries their diffs. `Bash` results do not, so shell-driven changes (`sed -i`, a heredoc script, `prettier --write`) are recovered from git: the tree is diffed from the commit the repo was on when the session started through to the working tree (so changes the session committed are included), files already dirty before the session are filtered out by mtime, and each change is credited to the turn whose commands account for it. These edits are marked "via shell" on the page. They inherit git's blind spots — a file edited again after the session shows both changes, and a commit made during the session by someone else is indistinguishable from the session's own — so the page states that too. `extract --no-git` skips the pass, and with it the Report lens's git state (its commands, tests, errors, and dependency sections still come from the transcript alone).
 - `/clear` does not continue a session, it starts a new transcript file, so the work before it would otherwise be missing from the story. Sessions split that way are joined automatically: the predecessor is found by its file mtime, which Claude Code lands on the `/clear` record's timestamp, and the chain is followed back as far as it goes. `session.chain` lists the joined ids oldest first and the page header names them. `extract --no-chain` extracts the one session alone.
 - A tool call whose result never arrived (an interrupted session) is shown as "edit attempted, result unknown" rather than causing an error; one whose result was an error is shown as "edit failed" with the error message.
@@ -177,7 +175,7 @@ A story page holds your session word for word: prompts, Claude's replies, diffs,
 
 - [Skill definition](session-story/SKILL.md) · [Schema](session-story/schemas/story.schema.json) · [Example output](examples/story.html) · [Changelog](CHANGELOG.md)
 
-Automatic Codex/Cursor/OpenCode transcript support, a hosted viewer, and WYSIWYG editing are intentionally outside the current scope.
+A hosted viewer and WYSIWYG editing are intentionally outside the current scope. Codex/Cursor/OpenCode support is planned for a later release.
 
 ## Repository layout
 
