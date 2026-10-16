@@ -1,0 +1,14 @@
+{
+  "name": "session-story",
+  "version": "0.4.0",
+  "description": "Generate a self-contained HTML session story that links each prompt to the file edits it caused, with a review timeline, a GitHub-style diff view, and a plain-language narrative.",
+  "author": {
+    "name": "Nenad Alajbegovic",
+    "url": "https://github.com/nalaj"
+  },
+  "homepage": "https://nalaj.github.io/session-story/",
+  "repository": "https://github.com/nalaj/session-story",
+  "license": "MIT",
+  "keywords": ["claude-code", "agent-skill", "session-replay", "code-review", "diff"],
+  "skills": ["./"]
+}
